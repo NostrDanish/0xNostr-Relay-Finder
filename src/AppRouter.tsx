@@ -1,22 +1,38 @@
-import { BrowserRouter, Route, Routes } from "react-router-dom";
-import { ScrollToTop } from "./components/ScrollToTop";
+import { useEffect } from "react";
+import { Route, Routes, useLocation } from "react-router-dom";
+import { Navbar } from "@/components/layout/Navbar";
+import { Footer } from "@/components/layout/Footer";
+import { HomePage } from "@/pages/HomePage";
+import { RelaysPage } from "@/pages/RelaysPage";
+import { RelayDetailPage } from "@/pages/RelayDetailPage";
+import { SubmitPage } from "@/pages/SubmitPage";
+import { AboutPage } from "@/pages/AboutPage";
+import { NotFoundPage } from "@/pages/NotFoundPage";
 
-import Index from "./pages/Index";
-import { NIP19Page } from "./pages/NIP19Page";
-import NotFound from "./pages/NotFound";
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }, [pathname]);
+  return null;
+}
 
-export function AppRouter() {
+export default function AppRouter() {
   return (
-    <BrowserRouter>
+    <div className="min-h-screen flex flex-col">
+      <Navbar />
       <ScrollToTop />
-      <Routes>
-        <Route path="/" element={<Index />} />
-        {/* NIP-19 route for npub1, note1, naddr1, nevent1, nprofile1 */}
-        <Route path="/:nip19" element={<NIP19Page />} />
-        {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-        <Route path="*" element={<NotFound />} />
-      </Routes>
-    </BrowserRouter>
+      <main className="flex-1">
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/relays" element={<RelaysPage />} />
+          <Route path="/relay/:id" element={<RelayDetailPage />} />
+          <Route path="/submit" element={<SubmitPage />} />
+          <Route path="/about" element={<AboutPage />} />
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </main>
+      <Footer />
+    </div>
   );
 }
-export default AppRouter;
