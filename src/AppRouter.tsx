@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Route, Routes, useLocation } from "react-router-dom";
+import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { HomePage } from "@/pages/HomePage";
@@ -17,7 +17,7 @@ function ScrollToTop() {
   return null;
 }
 
-export default function AppRouter() {
+function AppLayout() {
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />
@@ -34,5 +34,13 @@ export default function AppRouter() {
       </main>
       <Footer />
     </div>
+  );
+}
+
+export default function AppRouter() {
+  return (
+    <BrowserRouter>
+      <AppLayout />
+    </BrowserRouter>
   );
 }

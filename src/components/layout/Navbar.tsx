@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { useState, useRef } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Search, Menu, X, Zap, Moon, Sun, Radio } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,8 +16,36 @@ const NAV_LINKS = [
 export function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [searchVal, setSearchVal] = useState("");
+  const [mobileSearch, setMobileSearch] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
   const { theme, setTheme } = useTheme();
   const location = useLocation();
+  const navigate = useNavigate();
+
+  const handleDesktopSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Escape") {
+      setSearchOpen(false);
+      setSearchVal("");
+    }
+    if (e.key === "Enter") {
+      const q = searchVal.trim();
+      if (q) navigate(`/relays?q=${encodeURIComponent(q)}`);
+      else navigate("/relays");
+      setSearchOpen(false);
+      setSearchVal("");
+    }
+  };
+
+  const handleMobileSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      const q = mobileSearch.trim();
+      setMenuOpen(false);
+      setMobileSearch("");
+      if (q) navigate(`/relays?q=${encodeURIComponent(q)}`);
+      else navigate("/relays");
+    }
+  };
 
   return (
     <header className="sticky top-0 z-50 w-full glass border-b border-border/50">
@@ -61,18 +89,20 @@ export function Navbar() {
             {searchOpen ? (
               <div className="hidden md:flex items-center gap-2 animate-in slide-in-from-right-4 duration-200">
                 <Input
+                  ref={searchRef}
                   autoFocus
+                  value={searchVal}
+                  onChange={(e) => setSearchVal(e.target.value)}
                   placeholder="Search relays…"
                   className="w-48 h-8 text-sm"
-                  onKeyDown={(e) => {
-                    if (e.key === "Escape") setSearchOpen(false);
-                    if (e.key === "Enter") {
-                      const q = (e.target as HTMLInputElement).value;
-                      if (q) window.location.href = `/relays?q=${encodeURIComponent(q)}`;
-                    }
-                  }}
+                  onKeyDown={handleDesktopSearch}
                 />
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSearchOpen(false)}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => { setSearchOpen(false); setSearchVal(""); }}
+                >
                   <X className="w-3.5 h-3.5" />
                 </Button>
               </div>
@@ -125,17 +155,11 @@ export function Navbar() {
             <div className="relative mb-2">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
+                value={mobileSearch}
+                onChange={(e) => setMobileSearch(e.target.value)}
                 placeholder="Search relays…"
                 className="pl-9 h-9 text-sm"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    const q = (e.target as HTMLInputElement).value;
-                    if (q) {
-                      setMenuOpen(false);
-                      window.location.href = `/relays?q=${encodeURIComponent(q)}`;
-                    }
-                  }
-                }}
+                onKeyDown={handleMobileSearch}
               />
             </div>
             {NAV_LINKS.map((link) => (
