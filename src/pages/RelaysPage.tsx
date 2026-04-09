@@ -25,6 +25,8 @@ export function RelaysPage() {
     minUptime: Number(searchParams.get("minUptime") ?? 0),
     useCases: searchParams.get("useCase") ? [searchParams.get("useCase") as UseCaseTag] : [],
     sortBy: (searchParams.get("sortBy") as RelayFiltersState["sortBy"]) ?? "uptime",
+    nip66Only: searchParams.get("nip66Only") === "true",
+    blossomOnly: searchParams.get("blossomOnly") === "true",
   }));
 
   // Sync search param changes
@@ -41,7 +43,10 @@ export function RelaysPage() {
         minUptime: filters.minUptime || undefined,
         countryCodes: filters.countryCodes.length ? filters.countryCodes : undefined,
         useCases: filters.useCases.length ? filters.useCases : undefined,
+        communityTags: filters.communityTags.length ? filters.communityTags : undefined,
         onlineOnly: filters.onlineOnly,
+        blossomOnly: filters.blossomOnly,
+        nip66Only: filters.nip66Only,
         sortBy: filters.sortBy,
       }),
     [relays, search, filters]
@@ -110,6 +115,7 @@ export function RelaysPage() {
           <SelectContent>
             <SelectItem value="uptime">Sort: Uptime ↓</SelectItem>
             <SelectItem value="score">Sort: Trust Score ↓</SelectItem>
+            <SelectItem value="votes">Sort: Most Voted</SelectItem>
             <SelectItem value="alpha">Sort: A → Z</SelectItem>
             <SelectItem value="newest">Sort: Newest</SelectItem>
             <SelectItem value="popular">Sort: Most Popular</SelectItem>

@@ -1,8 +1,32 @@
-import type { RelayRecord } from '@/types/relay';
+import type { RelayRecord, CommunityTagVote, NIP66Data, ImportSource } from '@/types/relay';
 
 // Helper to create a realistic uptime sparkline
 function makeSpark(avg: number): number[] {
   return Array.from({ length: 14 }, () => Math.random() < avg ? 1 : 0);
+}
+
+// Helper to create community vote tags
+function makeVotes(pairs: [string, number, number][]): CommunityTagVote[] {
+  return pairs.map(([tag, upvotes, percent]) => ({
+    tag: tag as CommunityTagVote['tag'],
+    upvotes,
+    percent,
+  }));
+}
+
+// NIP-66 monitor pubkeys (real nostr.watch monitor pubkeys)
+const MONITOR_PUBKEYS = {
+  nostrWatch: 'cf45a6ba1363ad7ed213a078e710d24f2b7a9be1929acabb228084d29b3e08f8',
+  // additional monitors
+  altMonitor: 'a8e76c3ace7829f9ee44cf9293309e21a1824bf1e57631d00685a1ed0b0bd8a2',
+};
+
+// xport.top import source helper
+function xportSource(ago: number): ImportSource {
+  return { source: 'xport.top', importedAt: Date.now() - ago, fieldsUpdated: ['avgLatencyMs', 'uptimePercent30d', 'isOnline', 'countryCode'] };
+}
+function nip66Source(ago: number): ImportSource {
+  return { source: 'nip66', importedAt: Date.now() - ago, fieldsUpdated: ['nip66', 'trustScore'] };
 }
 
 export const RELAY_SEED_DATA: RelayRecord[] = [
@@ -33,6 +57,29 @@ export const RELAY_SEED_DATA: RelayRecord[] = [
     featured: true,
     trustScore: 98,
     websiteUrl: 'https://damus.io',
+    blossomSupported: false,
+    relayToolsUrl: 'https://relay.tools/relay/wss%3A%2F%2Frelay.damus.io',
+    nip66: {
+      enriched: true,
+      lastMonitorEvent: Date.now() - 1000 * 60 * 45,
+      liveStatus: 'online',
+      monitorLatencyMs: 42,
+      monitorPubkey: MONITOR_PUBKEYS.nostrWatch,
+      capabilities: { read: true, write: true, relay: true, blossom: false, hasNip11: true },
+      conflictsWithNip11: false,
+      eventsPerDay: 480000,
+      connectedUsers: 12400,
+    },
+    importSources: [
+      { source: 'nip11', importedAt: Date.now() - 1000 * 60 * 60 * 2, fieldsUpdated: ['nip11'] },
+      nip66Source(1000 * 60 * 45),
+      xportSource(1000 * 60 * 60 * 6),
+    ],
+    communityTags: makeVotes([
+      ['Best for General Chat', 341, 92],
+      ['High Reliability', 298, 88],
+      ['Low-Latency', 210, 67],
+    ]),
   },
   {
     id: '2',
@@ -61,6 +108,26 @@ export const RELAY_SEED_DATA: RelayRecord[] = [
     featured: true,
     trustScore: 99,
     websiteUrl: 'https://primal.net',
+    blossomSupported: false,
+    relayToolsUrl: 'https://relay.tools/relay/wss%3A%2F%2Frelay.primal.net',
+    nip66: {
+      enriched: true,
+      lastMonitorEvent: Date.now() - 1000 * 60 * 30,
+      liveStatus: 'online',
+      monitorLatencyMs: 35,
+      monitorPubkey: MONITOR_PUBKEYS.nostrWatch,
+      capabilities: { read: true, write: true, relay: true, blossom: false, hasNip11: true },
+      conflictsWithNip11: false,
+      eventsPerDay: 920000,
+      connectedUsers: 28500,
+    },
+    importSources: [nip66Source(1000 * 60 * 30), xportSource(1000 * 60 * 60 * 4)],
+    communityTags: makeVotes([
+      ['Best for General Chat', 412, 94],
+      ['High Reliability', 389, 91],
+      ['Low-Latency', 310, 78],
+      ['Best for Developers', 189, 54],
+    ]),
   },
   {
     id: '3',
@@ -89,6 +156,25 @@ export const RELAY_SEED_DATA: RelayRecord[] = [
     featured: true,
     trustScore: 92,
     websiteUrl: 'https://nos.lol',
+    blossomSupported: false,
+    relayToolsUrl: 'https://relay.tools/relay/wss%3A%2F%2Fnos.lol',
+    nip66: {
+      enriched: true,
+      lastMonitorEvent: Date.now() - 1000 * 60 * 60,
+      liveStatus: 'online',
+      monitorLatencyMs: 59,
+      monitorPubkey: MONITOR_PUBKEYS.nostrWatch,
+      capabilities: { read: true, write: true, relay: true, blossom: false, hasNip11: true },
+      conflictsWithNip11: false,
+      eventsPerDay: 210000,
+      connectedUsers: 5800,
+    },
+    importSources: [nip66Source(1000 * 60 * 60), xportSource(1000 * 60 * 60 * 8)],
+    communityTags: makeVotes([
+      ['Censorship-Resistant', 278, 89],
+      ['Best for General Chat', 241, 82],
+      ['Free Tier', 310, 95],
+    ]),
   },
   {
     id: '4',
@@ -177,6 +263,25 @@ export const RELAY_SEED_DATA: RelayRecord[] = [
     trustScore: 99,
     websiteUrl: 'https://nostr.wine',
     paymentUrl: 'https://nostr.wine/plans',
+    blossomSupported: false,
+    relayToolsUrl: 'https://relay.tools/relay/wss%3A%2F%2Fnostr.wine',
+    nip66: {
+      enriched: true,
+      lastMonitorEvent: Date.now() - 1000 * 60 * 20,
+      liveStatus: 'online',
+      monitorLatencyMs: 38,
+      monitorPubkey: MONITOR_PUBKEYS.nostrWatch,
+      capabilities: { read: true, write: true, relay: true, blossom: false, hasNip11: true },
+      conflictsWithNip11: false,
+      eventsPerDay: 95000,
+      connectedUsers: 2100,
+    },
+    importSources: [nip66Source(1000 * 60 * 20), xportSource(1000 * 60 * 60 * 5)],
+    communityTags: makeVotes([
+      ['High Reliability', 189, 97],
+      ['Privacy Focused', 176, 91],
+      ['Best for General Chat', 142, 78],
+    ]),
   },
   {
     id: '7',
@@ -293,6 +398,25 @@ export const RELAY_SEED_DATA: RelayRecord[] = [
     trustScore: 97,
     websiteUrl: 'https://nostr.land',
     paymentUrl: 'https://nostr.land/plans',
+    blossomSupported: false,
+    relayToolsUrl: 'https://relay.tools/relay/wss%3A%2F%2Fatlas.nostr.land',
+    nip66: {
+      enriched: true,
+      lastMonitorEvent: Date.now() - 1000 * 60 * 15,
+      liveStatus: 'online',
+      monitorLatencyMs: 31,
+      monitorPubkey: MONITOR_PUBKEYS.nostrWatch,
+      capabilities: { read: true, write: true, relay: true, blossom: false, hasNip11: true },
+      conflictsWithNip11: false,
+      eventsPerDay: 73000,
+      connectedUsers: 980,
+    },
+    importSources: [nip66Source(1000 * 60 * 15), xportSource(1000 * 60 * 60 * 3)],
+    communityTags: makeVotes([
+      ['High Reliability', 145, 95],
+      ['Low-Latency', 138, 90],
+      ['Best for Developers', 97, 64],
+    ]),
   },
   {
     id: '11',
@@ -706,6 +830,182 @@ export const RELAY_SEED_DATA: RelayRecord[] = [
     featured: false,
     trustScore: 70,
   },
+  // ─── Blossom / Media-focused relay ─────────────────────────────────────────
+  {
+    id: '26',
+    url: 'wss://blossom.band',
+    name: 'Blossom Band',
+    description: 'Media-optimized relay with native Blossom server support for image and video uploads. First-class NIP-94 and NIP-96 implementation.',
+    nip11: {
+      name: 'Blossom Band',
+      description: 'Blossom media relay with NIP-94/96 support.',
+      supported_nips: [1, 2, 9, 11, 16, 20, 94, 96],
+      software: 'blossom-server',
+      version: '1.0.0',
+      limitation: { max_message_length: 524288, payment_required: false },
+    },
+    useCases: ['Blossom', 'Images', 'Video'],
+    priceTiers: [{ name: 'Free', price: 0, currency: 'USD', features: ['Blossom uploads', 'NIP-94 events', 'NIP-96 compatible', 'Media CDN'] }],
+    countryCode: 'US',
+    countryName: 'United States',
+    isFree: true,
+    isOnline: true,
+    uptimePercent30d: 97.5,
+    uptimeSpark: makeSpark(0.975),
+    avgLatencyMs: 58,
+    lastChecked: Date.now() - 1000 * 60 * 5,
+    addedAt: Date.now() - 1000 * 60 * 60 * 24 * 60,
+    featured: true,
+    trustScore: 88,
+    blossomSupported: true,
+    relayToolsUrl: 'https://relay.tools/relay/wss%3A%2F%2Fblossom.band',
+    nip66: {
+      enriched: true,
+      lastMonitorEvent: Date.now() - 1000 * 60 * 25,
+      liveStatus: 'online',
+      monitorLatencyMs: 55,
+      monitorPubkey: MONITOR_PUBKEYS.nostrWatch,
+      capabilities: { read: true, write: true, relay: true, blossom: true, hasNip11: true },
+      conflictsWithNip11: false,
+      eventsPerDay: 34000,
+      connectedUsers: 820,
+    },
+    importSources: [nip66Source(1000 * 60 * 25), xportSource(1000 * 60 * 60 * 10)],
+    communityTags: makeVotes([
+      ['Best for Images', 312, 96],
+      ['Best for Video/Blossom', 298, 94],
+      ['Free Tier', 210, 89],
+    ]),
+  },
+  // ─── strfry-based high-volume relay ────────────────────────────────────────
+  {
+    id: '27',
+    url: 'wss://relay.noswhere.com',
+    name: 'Noswhere',
+    description: 'High-volume relay running strfry for maximum throughput. Excellent for high-traffic applications and developers.',
+    nip11: {
+      name: 'Noswhere',
+      description: 'High-volume strfry relay.',
+      supported_nips: [1, 2, 4, 9, 11, 15, 16, 20, 22, 29, 33, 40, 42, 45, 50],
+      software: 'strfry',
+      version: '1.0.2',
+      limitation: { max_message_length: 131072, max_subscriptions: 50, payment_required: false },
+    },
+    useCases: ['General', 'High Performance', 'Communities'],
+    priceTiers: [{ name: 'Free', price: 0, currency: 'USD', features: ['strfry engine', 'High throughput', 'NIP-29 groups', 'Open access'] }],
+    countryCode: 'NL',
+    countryName: 'Netherlands',
+    isFree: true,
+    isOnline: true,
+    uptimePercent30d: 98.9,
+    uptimeSpark: makeSpark(0.989),
+    avgLatencyMs: 49,
+    lastChecked: Date.now() - 1000 * 60 * 4,
+    addedAt: Date.now() - 1000 * 60 * 60 * 24 * 110,
+    featured: false,
+    trustScore: 90,
+    blossomSupported: false,
+    nip66: {
+      enriched: true,
+      lastMonitorEvent: Date.now() - 1000 * 60 * 40,
+      liveStatus: 'online',
+      monitorLatencyMs: 47,
+      monitorPubkey: MONITOR_PUBKEYS.altMonitor,
+      capabilities: { read: true, write: true, relay: true, blossom: false, hasNip11: true },
+      conflictsWithNip11: false,
+      eventsPerDay: 550000,
+      connectedUsers: 9200,
+    },
+    importSources: [nip66Source(1000 * 60 * 40), xportSource(1000 * 60 * 60 * 6)],
+    communityTags: makeVotes([
+      ['Best for High-Volume', 198, 91],
+      ['Best for Developers', 176, 84],
+      ['Low-Latency', 162, 79],
+    ]),
+  },
+  // ─── Long-form / blogging relay ────────────────────────────────────────────
+  {
+    id: '28',
+    url: 'wss://relay.satellite.earth',
+    name: 'Satellite.Earth Relay',
+    description: 'Relay powering the satellite.earth long-form publishing platform. Optimized for NIP-23 articles, NIP-23 edits, and long-form Nostr content.',
+    nip11: {
+      name: 'Satellite Earth',
+      description: 'Long-form content relay for satellite.earth.',
+      supported_nips: [1, 2, 9, 11, 16, 20, 22, 23, 33],
+      software: 'nostr-rs-relay',
+      version: '0.8.11',
+      limitation: { max_message_length: 524288, payment_required: false },
+    },
+    useCases: ['Long Form', 'General'],
+    priceTiers: [{ name: 'Free', price: 0, currency: 'USD', features: ['Long-form focus', 'Article storage', 'Editing support', 'Open access'] }],
+    countryCode: 'US',
+    countryName: 'United States',
+    isFree: true,
+    isOnline: true,
+    uptimePercent30d: 97.2,
+    uptimeSpark: makeSpark(0.972),
+    avgLatencyMs: 64,
+    lastChecked: Date.now() - 1000 * 60 * 11,
+    addedAt: Date.now() - 1000 * 60 * 60 * 24 * 75,
+    featured: false,
+    trustScore: 86,
+    blossomSupported: false,
+    nip66: {
+      enriched: false,
+    },
+    importSources: [{ source: 'nip11', importedAt: Date.now() - 1000 * 60 * 60, fieldsUpdated: ['nip11'] }, xportSource(1000 * 60 * 60 * 12)],
+    communityTags: makeVotes([
+      ['Best for Long-Form', 142, 93],
+      ['Best for Developers', 89, 66],
+    ]),
+  },
+  // ─── NIP-66 conflict example (for moderation demo) ─────────────────────────
+  {
+    id: '29',
+    url: 'wss://relay.lexingtonbitcoin.org',
+    name: 'Lexington Bitcoin Relay',
+    description: 'Community relay operated by the Lexington Bitcoin meetup group. NIP-66 data shows slight uptime discrepancy under review.',
+    nip11: {
+      name: 'Lexington Bitcoin',
+      description: 'Community relay for Bitcoiners.',
+      supported_nips: [1, 2, 4, 9, 11, 15, 16, 20, 22, 57],
+      software: 'nostr-rs-relay',
+      version: '0.8.8',
+      limitation: { payment_required: false },
+    },
+    useCases: ['General', 'Zaps'],
+    priceTiers: [{ name: 'Free', price: 0, currency: 'USD', features: ['Bitcoin community', 'Zap support', 'Open access'] }],
+    countryCode: 'US',
+    countryName: 'United States',
+    isFree: true,
+    isOnline: true,
+    uptimePercent30d: 94.1,
+    uptimeSpark: makeSpark(0.941),
+    avgLatencyMs: 77,
+    lastChecked: Date.now() - 1000 * 60 * 22,
+    addedAt: Date.now() - 1000 * 60 * 60 * 24 * 95,
+    featured: false,
+    trustScore: 76,
+    blossomSupported: false,
+    nip66: {
+      enriched: true,
+      lastMonitorEvent: Date.now() - 1000 * 60 * 90,
+      liveStatus: 'online',
+      monitorLatencyMs: 78,
+      monitorPubkey: MONITOR_PUBKEYS.altMonitor,
+      // NIP-11 says 94.1% uptime; NIP-66 monitor claims 97.3% — flagged
+      conflictsWithNip11: true,
+      conflictDetail: 'NIP-66 monitor reports 97.3% uptime vs 94.1% from our own checks. Under review.',
+      capabilities: { read: true, write: true, relay: true, blossom: false, hasNip11: true },
+      eventsPerDay: 12000,
+      connectedUsers: 310,
+    },
+    importSources: [nip66Source(1000 * 60 * 90)],
+    communityTags: makeVotes([
+      ['Best for Zaps', 67, 78],
+    ]),
+  },
 ];
 
 export const COUNTRIES = Array.from(
@@ -723,4 +1023,6 @@ export const STATS = {
   online: RELAY_SEED_DATA.filter((r) => r.isOnline).length,
   free: RELAY_SEED_DATA.filter((r) => r.isFree).length,
   paid: RELAY_SEED_DATA.filter((r) => !r.isFree).length,
+  nip66Enriched: RELAY_SEED_DATA.filter((r) => r.nip66?.enriched).length,
+  blossomEnabled: RELAY_SEED_DATA.filter((r) => r.blossomSupported).length,
 };

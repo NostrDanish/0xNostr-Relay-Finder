@@ -99,9 +99,12 @@ export function filterRelays(
     minUptime?: number;
     countryCodes?: string[];
     useCases?: string[];
+    communityTags?: string[];
     nips?: number[];
     onlineOnly?: boolean;
-    sortBy?: "uptime" | "score" | "alpha" | "newest" | "popular";
+    blossomOnly?: boolean;
+    nip66Only?: boolean;
+    sortBy?: "uptime" | "score" | "alpha" | "newest" | "popular" | "votes";
   }
 ): RelayRecord[] {
   let result = [...relays];
@@ -114,7 +117,8 @@ export function filterRelays(
         r.name.toLowerCase().includes(q) ||
         r.description.toLowerCase().includes(q) ||
         r.useCases.some((u) => u.toLowerCase().includes(q)) ||
-        (r.nip11.tags ?? []).some((t) => t.toLowerCase().includes(q))
+        (r.nip11.tags ?? []).some((t) => t.toLowerCase().includes(q)) ||
+        r.communityTags?.some((ct) => ct.tag.toLowerCase().includes(q))
     );
   }
 
@@ -133,6 +137,14 @@ export function filterRelays(
     result = result.filter((r) => opts.useCases!.some((uc) => r.useCases.includes(uc as RelayRecord["useCases"][0])));
   }
 
+  if (opts.communityTags?.length) {
+    result = result.filter((r) =>
+      opts.communityTags!.some((ct) =>
+        r.communityTags?.some((vote) => vote.tag === ct)
+      )
+    );
+  }
+
   if (opts.nips?.length) {
     result = result.filter((r) =>
       opts.nips!.every((nip) => r.nip11.supported_nips?.includes(nip))
@@ -143,6 +155,14 @@ export function filterRelays(
     result = result.filter((r) => r.isOnline);
   }
 
+  if (opts.blossomOnly) {
+    result = result.filter((r) => r.blossomSupported === true);
+  }
+
+  if (opts.nip66Only) {
+    result = result.filter((r) => r.nip66?.enriched === true);
+  }
+
   const sortBy = opts.sortBy ?? "uptime";
   result.sort((a, b) => {
     switch (sortBy) {
@@ -151,6 +171,11 @@ export function filterRelays(
       case "alpha": return a.name.localeCompare(b.name);
       case "newest": return b.addedAt - a.addedAt;
       case "popular": return b.trustScore - a.trustScore;
+      case "votes": {
+        const aVotes = a.communityTags?.reduce((s, t) => s + t.upvotes, 0) ?? 0;
+        const bVotes = b.communityTags?.reduce((s, t) => s + t.upvotes, 0) ?? 0;
+        return bVotes - aVotes;
+      }
       default: return 0;
     }
   });

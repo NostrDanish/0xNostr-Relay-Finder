@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Copy, Check, ExternalLink, Globe2, Clock, Wifi } from "lucide-react";
+import { Copy, Check, ExternalLink, Globe2, Clock, Wifi, Droplets, Download } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -8,6 +8,8 @@ import { UptimeBadge, OnlineIndicator } from "./UptimeBadge";
 import { SparklineChart } from "./SparklineChart";
 import { UseCaseBadge } from "./UseCaseBadge";
 import { PriceBadge } from "./PriceBadge";
+import { NIP66Badge, NIP66StatusDot } from "./NIP66Badge";
+import { CommunityTagsCompact } from "./VotingPanel";
 import type { RelayRecord } from "@/types/relay";
 import { relayUrlToId, shortenUrl, timeAgo, getNipName, formatLatency } from "@/lib/utils";
 
@@ -89,15 +91,38 @@ export function RelayCard({ relay, view = "grid" }: RelayCardProps) {
         <CardHeader className="pb-2 pt-3 px-4">
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-0.5">
+              <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
                 <OnlineIndicator isOnline={relay.isOnline} />
                 {relay.featured && (
                   <span className="text-xs bg-primary/15 text-primary border border-primary/20 px-1.5 py-0.5 rounded-full font-medium">
                     ⭐ Featured
                   </span>
                 )}
+                {relay.blossomSupported && (
+                  <span className="text-xs bg-sky-500/10 text-sky-500 border border-sky-500/20 px-1.5 py-0.5 rounded-full font-medium flex items-center gap-0.5">
+                    <Droplets className="w-2.5 h-2.5" /> Blossom
+                  </span>
+                )}
+                {relay.nip66 && <NIP66Badge data={relay.nip66} size="sm" />}
+                {relay.importSources?.some((s) => s.source === 'xport.top') && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="text-xs bg-orange-500/10 text-orange-500 border border-orange-500/20 px-1.5 py-0.5 rounded-full font-medium flex items-center gap-0.5 cursor-help">
+                          <Download className="w-2.5 h-2.5" /> xport.top
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p className="text-xs">Stats imported from relays.xport.top CSV</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
               </div>
-              <h3 className="font-bold text-sm leading-tight truncate mt-1">{relay.name}</h3>
+              <div className="flex items-center gap-1.5">
+                <h3 className="font-bold text-sm leading-tight truncate">{relay.name}</h3>
+                {relay.nip66 && <NIP66StatusDot data={relay.nip66} />}
+              </div>
             </div>
             <div className="flex items-center gap-1 flex-shrink-0">
               <TooltipProvider>
@@ -186,6 +211,11 @@ export function RelayCard({ relay, view = "grid" }: RelayCardProps) {
                 </span>
               )}
             </div>
+          )}
+
+          {/* Community tags */}
+          {relay.communityTags && relay.communityTags.length > 0 && (
+            <CommunityTagsCompact tags={relay.communityTags.slice(0, 2)} />
           )}
 
           {/* Footer meta */}

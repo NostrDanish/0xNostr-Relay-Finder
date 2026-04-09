@@ -2,8 +2,9 @@ import { useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import {
   ArrowLeft, Copy, Check, ExternalLink, Wifi, Globe2, Clock,
-  Shield, Zap, Server, Code2, Users, Info, AlertCircle,
+  Shield, Zap, Code2, Users, Info, AlertCircle, Activity,
   CheckCircle2, XCircle, Loader2, ChevronRight, DollarSign,
+  Download, Droplets, ThumbsUp, Wrench,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +16,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { UptimeBadge, OnlineIndicator } from "@/components/relay/UptimeBadge";
 import { SparklineChart } from "@/components/relay/SparklineChart";
 import { UseCaseBadge } from "@/components/relay/UseCaseBadge";
+import { NIP66Badge } from "@/components/relay/NIP66Badge";
+import { VotingPanel } from "@/components/relay/VotingPanel";
 import { UptimeHistoryChart } from "@/components/charts/UptimeHistoryChart";
 import { useRelayById } from "@/hooks/useRelayData";
 import { useRelayTest } from "@/hooks/useRelayTest";
@@ -124,6 +127,26 @@ export function RelayDetailPage() {
                   </Badge>
                 )}
                 <UptimeBadge uptime={relay.uptimePercent30d} showLabel />
+                {relay.nip66 && <NIP66Badge data={relay.nip66} size="md" />}
+                {relay.blossomSupported && (
+                  <span className="inline-flex items-center gap-1 text-xs bg-sky-500/10 text-sky-500 border border-sky-500/20 px-2 py-0.5 rounded-full font-medium">
+                    <Droplets className="w-3 h-3" /> Blossom
+                  </span>
+                )}
+                {relay.importSources?.some((s) => s.source === 'xport.top') && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="inline-flex items-center gap-1 text-xs bg-orange-500/10 text-orange-500 border border-orange-500/20 px-2 py-0.5 rounded-full font-medium cursor-help">
+                          <Download className="w-3 h-3" /> xport.top
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p className="text-xs">Stats imported from relays.xport.top CSV export</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
               </div>
 
               <h1 className="text-2xl md:text-3xl font-black mb-1">{relay.name}</h1>
@@ -192,6 +215,14 @@ export function RelayDetailPage() {
         <TabsList className="bg-muted/50">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="uptime">Uptime</TabsTrigger>
+          <TabsTrigger value="nip66" className="flex items-center gap-1">
+            <Activity className="w-3 h-3" />
+            NIP-66
+          </TabsTrigger>
+          <TabsTrigger value="community" className="flex items-center gap-1">
+            <ThumbsUp className="w-3 h-3" />
+            Community
+          </TabsTrigger>
           <TabsTrigger value="nips">NIPs</TabsTrigger>
           <TabsTrigger value="pricing">Pricing</TabsTrigger>
           <TabsTrigger value="add-to-client">Add to Client</TabsTrigger>
@@ -406,6 +437,152 @@ export function RelayDetailPage() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* NIP-66 Tab */}
+        <TabsContent value="nip66" className="space-y-4">
+          {!relay.nip66?.enriched ? (
+            <Card className="border-border/60">
+              <CardContent className="py-10 text-center">
+                <Activity className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+                <h3 className="font-bold mb-2">No NIP-66 Data Available</h3>
+                <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+                  This relay hasn't been picked up by a nostr.watch-style NIP-66 monitor yet.
+                  NIP-66 data comes from kind:30166 (Relay Discovery) and kind:10166 (Monitor Announcements) events.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* NIP-66 Status */}
+              <Card className="border-border/60">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Activity className="w-4 h-4 text-violet-500" />
+                    NIP-66 Monitor Data
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {[
+                    { label: "Live Status", value: relay.nip66.liveStatus ?? "unknown" },
+                    { label: "Monitor Latency", value: relay.nip66.monitorLatencyMs != null ? `${relay.nip66.monitorLatencyMs}ms` : "N/A" },
+                    { label: "Last Event", value: relay.nip66.lastMonitorEvent ? timeAgo(relay.nip66.lastMonitorEvent) : "N/A" },
+                    { label: "Events/Day", value: relay.nip66.eventsPerDay?.toLocaleString() ?? "N/A" },
+                    { label: "Connected Users", value: relay.nip66.connectedUsers?.toLocaleString() ?? "N/A" },
+                    { label: "Monitor Pubkey", value: relay.nip66.monitorPubkey ? `${relay.nip66.monitorPubkey.slice(0, 16)}…` : "N/A" },
+                  ].map(({ label, value }) => (
+                    <div key={label} className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">{label}</span>
+                      <span className="font-medium font-mono text-xs">{value}</span>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+
+              {/* Capabilities */}
+              <Card className="border-border/60">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Shield className="w-4 h-4 text-violet-500" />
+                    Capabilities (NIP-66)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {relay.nip66.capabilities && Object.entries(relay.nip66.capabilities).map(([cap, val]) => (
+                    <div key={cap} className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground capitalize">{cap.replace(/([A-Z])/g, ' $1')}</span>
+                      {val ? (
+                        <span className="text-emerald-500 flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Yes</span>
+                      ) : (
+                        <span className="text-muted-foreground flex items-center gap-1"><XCircle className="w-3.5 h-3.5" /> No</span>
+                      )}
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+
+              {/* Conflict warning */}
+              {relay.nip66.conflictsWithNip11 && (
+                <Card className="border-yellow-500/30 bg-yellow-500/5 md:col-span-2">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base flex items-center gap-2 text-yellow-500">
+                      <AlertCircle className="w-4 h-4" />
+                      NIP-66 / NIP-11 Conflict Detected
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground">{relay.nip66.conflictDetail}</p>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      This discrepancy has been flagged for moderation review. Data may be temporarily inconsistent.
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Import sources */}
+              {relay.importSources && relay.importSources.length > 0 && (
+                <Card className="border-border/60 md:col-span-2">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Download className="w-4 h-4 text-primary" />
+                      Data Sources
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex flex-wrap gap-2">
+                      {relay.importSources.map((src, i) => (
+                        <div key={i} className="flex items-center gap-2 bg-muted/40 rounded-lg px-3 py-2 text-xs">
+                          <span className="font-semibold">{src.source}</span>
+                          <span className="text-muted-foreground">{timeAgo(src.importedAt)}</span>
+                          {src.fieldsUpdated && (
+                            <span className="text-muted-foreground opacity-70">→ {src.fieldsUpdated.join(', ')}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Community Tab */}
+        <TabsContent value="community" className="space-y-4">
+          <Card className="border-border/60">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <ThumbsUp className="w-4 h-4 text-primary" />
+                Community Votes
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <VotingPanel relay={relay} />
+            </CardContent>
+          </Card>
+
+          {relay.relayToolsUrl && (
+            <Card className="border-border/60 bg-gradient-to-br from-primary/5 to-violet-500/5">
+              <CardContent className="pt-5 pb-5">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center flex-shrink-0">
+                    <Wrench className="w-5 h-5 text-primary" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-bold text-sm mb-0.5">One-click add via relay.tools</h3>
+                    <p className="text-xs text-muted-foreground">
+                      Use relay.tools to add this relay to your Nostr client in one click.
+                    </p>
+                  </div>
+                  <a href={relay.relayToolsUrl} target="_blank" rel="noopener noreferrer">
+                    <Button size="sm" variant="outline" className="gap-2 flex-shrink-0">
+                      Open relay.tools <ExternalLink className="w-3.5 h-3.5" />
+                    </Button>
+                  </a>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         {/* NIPs Tab */}

@@ -7,6 +7,7 @@ import { RelaysPage } from "@/pages/RelaysPage";
 import { RelayDetailPage } from "@/pages/RelayDetailPage";
 import { SubmitPage } from "@/pages/SubmitPage";
 import { AboutPage } from "@/pages/AboutPage";
+import { ApiDocsPage } from "@/pages/ApiDocsPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 
 function ScrollToTop() {
@@ -29,6 +30,7 @@ function AppLayout() {
           <Route path="/relay/:id" element={<RelayDetailPage />} />
           <Route path="/submit" element={<SubmitPage />} />
           <Route path="/about" element={<AboutPage />} />
+          <Route path="/api" element={<ApiDocsPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </main>

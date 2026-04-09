@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useSeoMeta } from "@unhead/react";
-import { Search, Radio, TrendingUp, Globe2, Zap, Shield, ArrowRight, Star, CheckCircle2 } from "lucide-react";
+import { Search, Radio, TrendingUp, Globe2, Zap, Shield, ArrowRight, Star, CheckCircle2, Code2, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,7 +9,6 @@ import { RelayCard } from "@/components/relay/RelayCard";
 import { UseCaseBadge } from "@/components/relay/UseCaseBadge";
 import { RELAY_SEED_DATA, STATS, USE_CASE_OPTIONS } from "@/data/relays";
 import type { UseCaseTag } from "@/types/relay";
-import { Link } from "react-router-dom";
 
 const FEATURED = RELAY_SEED_DATA.filter((r) => r.featured).slice(0, 4);
 const TOP_RELAYS = [...RELAY_SEED_DATA].sort((a, b) => b.uptimePercent30d - a.uptimePercent30d).slice(0, 6);
@@ -17,8 +16,8 @@ const TOP_RELAYS = [...RELAY_SEED_DATA].sort((a, b) => b.uptimePercent30d - a.up
 const HERO_STATS = [
   { label: "Relays Tracked", value: STATS.total.toString(), icon: Radio, color: "text-primary" },
   { label: "Online Now", value: STATS.online.toString(), icon: TrendingUp, color: "text-emerald-500" },
+  { label: "NIP-66 Enriched", value: STATS.nip66Enriched.toString(), icon: Activity, color: "text-violet-500" },
   { label: "Free Relays", value: STATS.free.toString(), icon: Globe2, color: "text-sky-500" },
-  { label: "Countries", value: "12+", icon: Globe2, color: "text-violet-500" },
 ];
 
 const QUICK_FILTERS = [
@@ -241,6 +240,60 @@ export function HomePage() {
                 </Card>
               );
             })}
+          </div>
+        </div>
+      </section>
+
+      {/* API CTA */}
+      <section className="container mx-auto max-w-7xl px-4 py-12">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* API promo */}
+          <div className="lg:col-span-2 bg-gradient-to-br from-primary/10 via-violet-500/5 to-transparent border border-primary/20 rounded-2xl p-6">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-primary/15 rounded-xl flex items-center justify-center flex-shrink-0">
+                <Code2 className="w-6 h-6 text-primary" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="font-black text-lg">Free API for Nostr Clients</h3>
+                  <span className="text-xs bg-emerald-500/15 text-emerald-500 border border-emerald-500/25 px-2 py-0.5 rounded-full font-bold">FREE</span>
+                </div>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Query relays programmatically. Filter by uptime, pricing, NIP support, Blossom, country, and community votes.
+                  Used by Coracle, Amethyst, and other Nostr clients.
+                </p>
+                <code className="block text-xs bg-background/80 border border-border/50 rounded-lg px-3 py-2 font-mono text-muted-foreground mb-3">
+                  GET /api/relays?uptime_gte=99&amp;pricing=free&amp;blossom=true&amp;limit=10
+                </code>
+                <div className="flex gap-2">
+                  <Link to="/api">
+                    <Button size="sm" className="gap-2">
+                      <Code2 className="w-3.5 h-3.5" />
+                      View API Docs
+                    </Button>
+                  </Link>
+                  <span className="text-xs text-muted-foreground self-center">100 req/min · No auth · CORS enabled</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* NIP-66 promo */}
+          <div className="bg-gradient-to-br from-violet-500/10 to-transparent border border-violet-500/20 rounded-2xl p-6">
+            <div className="w-10 h-10 bg-violet-500/15 rounded-xl flex items-center justify-center mb-3">
+              <Activity className="w-5 h-5 text-violet-500" />
+            </div>
+            <h3 className="font-bold mb-1.5">NIP-66 Enriched Data</h3>
+            <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
+              Official health data from nostr.watch-style monitors via kind:30166 and kind:10166 events.
+              {STATS.nip66Enriched} relays enriched so far.
+            </p>
+            <Link to="/relays?nip66Only=true">
+              <Button size="sm" variant="outline" className="gap-2 text-xs border-violet-500/30 text-violet-500 hover:bg-violet-500/10">
+                <Activity className="w-3 h-3" />
+                View NIP-66 Relays
+              </Button>
+            </Link>
           </div>
         </div>
       </section>

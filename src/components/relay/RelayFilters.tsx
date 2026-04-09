@@ -1,12 +1,13 @@
 import { useState } from "react";
-import { Filter, X, ChevronDown } from "lucide-react";
+import { Filter, X, ChevronDown, ShieldCheck, Droplets } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { UseCaseBadge } from "./UseCaseBadge";
 import { USE_CASE_OPTIONS, COUNTRIES } from "@/data/relays";
-import type { UseCaseTag } from "@/types/relay";
+import type { UseCaseTag, VoteTag } from "@/types/relay";
+import { ALL_VOTE_TAGS } from "@/types/relay";
 import { cn } from "@/lib/utils";
 
 export type RelayFiltersState = {
@@ -14,8 +15,11 @@ export type RelayFiltersState = {
   minUptime: number;
   countryCodes: string[];
   useCases: UseCaseTag[];
+  communityTags: VoteTag[];
   onlineOnly: boolean;
-  sortBy: "uptime" | "score" | "alpha" | "newest" | "popular";
+  blossomOnly: boolean;
+  nip66Only: boolean;
+  sortBy: "uptime" | "score" | "alpha" | "newest" | "popular" | "votes";
 };
 
 export const DEFAULT_FILTERS: RelayFiltersState = {
@@ -23,7 +27,10 @@ export const DEFAULT_FILTERS: RelayFiltersState = {
   minUptime: 0,
   countryCodes: [],
   useCases: [],
+  communityTags: [],
   onlineOnly: false,
+  blossomOnly: false,
+  nip66Only: false,
   sortBy: "uptime",
 };
 
@@ -54,7 +61,21 @@ export function RelayFilters({ filters, onChange, resultCount }: RelayFiltersPro
     filters.minUptime > 0 ||
     filters.countryCodes.length > 0 ||
     filters.useCases.length > 0 ||
-    filters.onlineOnly;
+    filters.communityTags.length > 0 ||
+    filters.onlineOnly ||
+    filters.blossomOnly ||
+    filters.nip66Only;
+
+  const activeCount = [
+    filters.pricing !== "any" ? 1 : 0,
+    filters.minUptime > 0 ? 1 : 0,
+    filters.countryCodes.length,
+    filters.useCases.length,
+    filters.communityTags.length,
+    filters.onlineOnly ? 1 : 0,
+    filters.blossomOnly ? 1 : 0,
+    filters.nip66Only ? 1 : 0,
+  ].reduce((a, b) => a + b, 0);
 
   const resetFilters = () => onChange({ ...DEFAULT_FILTERS, sortBy: filters.sortBy });
 
@@ -63,6 +84,13 @@ export function RelayFilters({ filters, onChange, resultCount }: RelayFiltersPro
       ? filters.useCases.filter((u) => u !== uc)
       : [...filters.useCases, uc];
     onChange({ ...filters, useCases: next });
+  };
+
+  const toggleCommunityTag = (tag: VoteTag) => {
+    const next = filters.communityTags.includes(tag)
+      ? filters.communityTags.filter((t) => t !== tag)
+      : [...filters.communityTags, tag];
+    onChange({ ...filters, communityTags: next });
   };
 
   const toggleCountry = (code: string) => {
@@ -81,13 +109,7 @@ export function RelayFilters({ filters, onChange, resultCount }: RelayFiltersPro
           <span className="font-bold text-sm">Filters</span>
           {hasActiveFilters && (
             <Badge variant="secondary" className="text-xs px-1.5">
-              {[
-                filters.pricing !== "any" ? 1 : 0,
-                filters.minUptime > 0 ? 1 : 0,
-                filters.countryCodes.length,
-                filters.useCases.length,
-                filters.onlineOnly ? 1 : 0,
-              ].reduce((a, b) => a + b, 0)}
+              {activeCount}
             </Badge>
           )}
         </div>
@@ -124,20 +146,46 @@ export function RelayFilters({ filters, onChange, resultCount }: RelayFiltersPro
           </div>
         </FilterSection>
 
-        {/* Online only */}
-        <FilterSection title="Status" defaultOpen={true}>
-          <button
-            onClick={() => onChange({ ...filters, onlineOnly: !filters.onlineOnly })}
-            className={cn(
-              "text-xs px-3 py-1.5 rounded-full border font-medium transition-all flex items-center gap-1.5",
-              filters.onlineOnly
-                ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
-                : "border-border text-muted-foreground hover:border-emerald-500/30 hover:text-foreground"
-            )}
-          >
-            <span className={cn("w-1.5 h-1.5 rounded-full", filters.onlineOnly ? "bg-emerald-500" : "bg-muted-foreground")} />
-            Online only
-          </button>
+        {/* Status + special flags */}
+        <FilterSection title="Status & Features" defaultOpen={true}>
+          <div className="flex flex-col gap-1.5">
+            <button
+              onClick={() => onChange({ ...filters, onlineOnly: !filters.onlineOnly })}
+              className={cn(
+                "text-xs px-3 py-1.5 rounded-full border font-medium transition-all flex items-center gap-1.5 w-fit",
+                filters.onlineOnly
+                  ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
+                  : "border-border text-muted-foreground hover:border-emerald-500/30 hover:text-foreground"
+              )}
+            >
+              <span className={cn("w-1.5 h-1.5 rounded-full", filters.onlineOnly ? "bg-emerald-500" : "bg-muted-foreground")} />
+              Online only
+            </button>
+            <button
+              onClick={() => onChange({ ...filters, blossomOnly: !filters.blossomOnly })}
+              className={cn(
+                "text-xs px-3 py-1.5 rounded-full border font-medium transition-all flex items-center gap-1.5 w-fit",
+                filters.blossomOnly
+                  ? "bg-sky-500/15 text-sky-600 dark:text-sky-400 border-sky-500/30"
+                  : "border-border text-muted-foreground hover:border-sky-500/30 hover:text-foreground"
+              )}
+            >
+              <Droplets className="w-2.5 h-2.5" />
+              Blossom only
+            </button>
+            <button
+              onClick={() => onChange({ ...filters, nip66Only: !filters.nip66Only })}
+              className={cn(
+                "text-xs px-3 py-1.5 rounded-full border font-medium transition-all flex items-center gap-1.5 w-fit",
+                filters.nip66Only
+                  ? "bg-violet-500/15 text-violet-600 dark:text-violet-400 border-violet-500/30"
+                  : "border-border text-muted-foreground hover:border-violet-500/30 hover:text-foreground"
+              )}
+            >
+              <ShieldCheck className="w-2.5 h-2.5" />
+              NIP-66 enriched
+            </button>
+          </div>
         </FilterSection>
 
         {/* Minimum uptime */}
@@ -189,6 +237,26 @@ export function RelayFilters({ filters, onChange, resultCount }: RelayFiltersPro
                 onClick={() => toggleUseCase(uc as UseCaseTag)}
                 active={filters.useCases.includes(uc as UseCaseTag)}
               />
+            ))}
+          </div>
+        </FilterSection>
+
+        {/* Community votes "Best for" filter */}
+        <FilterSection title="Best For (Community)" defaultOpen={false}>
+          <div className="flex flex-wrap gap-1.5">
+            {ALL_VOTE_TAGS.map((tag) => (
+              <button
+                key={tag}
+                onClick={() => toggleCommunityTag(tag as VoteTag)}
+                className={cn(
+                  "text-xs px-2.5 py-1 rounded-full border font-medium transition-all",
+                  filters.communityTags.includes(tag as VoteTag)
+                    ? "bg-primary/15 text-primary border-primary/30"
+                    : "border-border text-muted-foreground hover:border-primary/30 hover:text-foreground"
+                )}
+              >
+                {tag}
+              </button>
             ))}
           </div>
         </FilterSection>
