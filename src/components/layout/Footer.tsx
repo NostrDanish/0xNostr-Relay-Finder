@@ -61,6 +61,7 @@ export function Footer() {
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li><Link to="/about" className="hover:text-foreground transition-colors">About Nostr Relays</Link></li>
               <li><Link to="/about#scoring" className="hover:text-foreground transition-colors">How Scores Work</Link></li>
+              <li><Link to="/api" className="hover:text-foreground transition-colors">Public API</Link></li>
               <li><Link to="/submit" className="hover:text-foreground transition-colors">Submit a Relay</Link></li>
               <li>
                 <a
