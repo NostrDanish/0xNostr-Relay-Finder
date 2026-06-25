@@ -10,12 +10,34 @@
  */
 
 // ─── App Relays ───────────────────────────────────────────────────────────────
-/** Primary app relay for all 0xRelayFinder data */
+/** Our own relays — always included for writes and reads */
 export const APP_RELAY_PRIMARY = 'wss://relay.0xPrivacy.online';
-/** Secondary app relay */
 export const APP_RELAY_SECONDARY = 'wss://0xPrivacy.nostr1.com';
-/** All app relays as a group - data is published to both, read from both */
-export const APP_RELAY_URLS = [APP_RELAY_PRIMARY, APP_RELAY_SECONDARY];
+
+/**
+ * Stable public relays we also publish to and read from.
+ * This ensures data is always reachable even if our relays have downtime,
+ * and gives us broad discoverability across the Nostr network.
+ */
+export const PUBLIC_RELAYS = [
+  'wss://relay.damus.io',
+  'wss://relay.primal.net',
+  'wss://nos.lol',
+  'wss://relay.nostr.band',
+  'wss://relay.snort.social',
+];
+
+/**
+ * Full relay group — ours + public.
+ * All app data (submissions, votes, tags, roles) is published to ALL of these
+ * and read from ALL of these. Our relays come first so they're prioritised.
+ */
+export const APP_RELAY_URLS = [
+  APP_RELAY_PRIMARY,
+  APP_RELAY_SECONDARY,
+  ...PUBLIC_RELAYS,
+];
+
 /** Backwards compat alias — points to primary */
 export const APP_RELAY_URL = APP_RELAY_PRIMARY;
 
@@ -167,11 +189,8 @@ export const USE_CASE_DEFINITIONS: Record<string, { label: string; description: 
 };
 
 // ─── Fallback Seed Relays ─────────────────────────────────────────────────────
-export const SEED_RELAYS = [
-  'wss://relay.damus.io',
-  'wss://relay.primal.net',
-  'wss://nos.lol',
-];
+/** Same as PUBLIC_RELAYS — exported under legacy name for backwards compat */
+export const SEED_RELAYS = PUBLIC_RELAYS;
 
 // ─── CORS Proxy ───────────────────────────────────────────────────────────────
 export const CORS_PROXY_TEMPLATE = 'https://proxy.shakespeare.diy/?url={href}';

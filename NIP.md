@@ -6,9 +6,20 @@
 
 ## Data Relays
 
-All app data is published to and read from:
+All app data is published to and read from the full relay group:
+
+**Our relays (always included):**
 - `wss://relay.0xPrivacy.online` (primary)
 - `wss://0xPrivacy.nostr1.com` (secondary)
+
+**Public relays (for stability and discoverability):**
+- `wss://relay.damus.io`
+- `wss://relay.primal.net`
+- `wss://nos.lol`
+- `wss://relay.nostr.band`
+- `wss://relay.snort.social`
+
+Data is published to **all** relays and read from **all** of them, ensuring redundancy and broad reach.
 
 ## App Owner
 
