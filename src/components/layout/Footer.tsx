@@ -41,6 +41,7 @@ export function Footer() {
               <li><Link to="/relays?pricing=free" className="hover:text-foreground transition-colors">Free Relays</Link></li>
               <li><Link to="/relays?pricing=paid" className="hover:text-foreground transition-colors">Paid Relays</Link></li>
               <li><Link to="/relays?minUptime=99" className="hover:text-foreground transition-colors">99%+ Uptime</Link></li>
+              <li><Link to="/lookup" className="hover:text-foreground transition-colors">npub Relay Lookup</Link></li>
             </ul>
           </div>
 

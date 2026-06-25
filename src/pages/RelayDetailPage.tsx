@@ -4,7 +4,8 @@ import {
   ArrowLeft, Copy, Check, ExternalLink, Wifi, Globe2, Clock,
   Shield, Zap, Code2, Users, Info, AlertCircle, Activity,
   CheckCircle2, XCircle, Loader2, ChevronRight, DollarSign,
-  Download, Droplets, ThumbsUp, Wrench,
+  Download, Droplets, ThumbsUp, Wrench, MapPin, FileText,
+  RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,6 +23,9 @@ import { UptimeHistoryChart } from "@/components/charts/UptimeHistoryChart";
 import { AutoTagsPanel } from "@/components/relay/AutoTagsPanel";
 import { useRelayById } from "@/hooks/useRelayData";
 import { useRelayTest } from "@/hooks/useRelayTest";
+import { useLiveNIP11 } from "@/hooks/useLiveNIP11";
+import { useNIP66Monitor, decodeGeohash } from "@/hooks/useNIP66Monitor";
+import { LiveStatusBadges, CheckNowButton } from "@/components/relay/LiveStatusBadges";
 import { shortenUrl, getNipName, formatPrice, timeAgo, formatLatency, relayUrlToId } from "@/lib/utils";
 
 const CLIENT_INSTRUCTIONS: Record<string, { name: string; steps: string[] }> = {
@@ -48,8 +52,14 @@ export function RelayDetailPage() {
   const navigate = useNavigate();
   const { relay, loading, notFound } = useRelayById(id ?? "");
   const { result: testResult, test: runTest, reset: resetTest } = useRelayTest();
+  const { data: liveNip11 } = useLiveNIP11(relay?.url ?? '', !!relay);
+  const { data: monitorMap } = useNIP66Monitor();
   const [copied, setCopied] = useState(false);
   const [selectedClient, setSelectedClient] = useState("damus");
+
+  // Get NIP-66 monitor data for this relay
+  const monitorEvent = relay ? monitorMap?.get(relay.url) : undefined;
+  const geoCoords = monitorEvent?.geohash ? decodeGeohash(monitorEvent.geohash) : null;
 
   const handleCopy = () => {
     if (!relay) return;
@@ -91,7 +101,9 @@ export function RelayDetailPage() {
     );
   }
 
-  const nips = relay.nip11.supported_nips ?? [];
+  // Use live NIP-11 when available, fallback to stored
+  const effectiveNip11 = liveNip11 ?? relay.nip11;
+  const nips = effectiveNip11.supported_nips ?? [];
   const minPriceTier = relay.priceTiers.find((t) => t.price > 0) ?? relay.priceTiers[0];
 
   const testStatusIcon = {
@@ -242,16 +254,23 @@ export function RelayDetailPage() {
                 <CardTitle className="text-base flex items-center gap-2">
                   <Info className="w-4 h-4 text-primary" />
                   Relay Information (NIP-11)
+                  {liveNip11 && (
+                    <span className="text-xs bg-emerald-500/15 text-emerald-500 border border-emerald-500/25 px-1.5 py-0.5 rounded-full font-medium ml-auto">
+                      Live
+                    </span>
+                  )}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 {[
-                  { label: "Name", value: relay.nip11.name },
-                  { label: "Software", value: relay.nip11.software },
-                  { label: "Version", value: relay.nip11.version },
-                  { label: "Contact", value: relay.nip11.contact },
-                  { label: "Pubkey", value: relay.nip11.pubkey ? `${relay.nip11.pubkey.slice(0, 16)}…` : undefined },
+                  { label: "Name", value: effectiveNip11.name },
+                  { label: "Software", value: effectiveNip11.software },
+                  { label: "Version", value: effectiveNip11.version },
+                  { label: "Contact", value: effectiveNip11.contact },
+                  { label: "Pubkey", value: effectiveNip11.pubkey ? `${effectiveNip11.pubkey.slice(0, 16)}…` : undefined },
                   { label: "Location", value: relay.countryName },
+                  { label: "Countries", value: effectiveNip11.relay_countries?.join(', ') },
+                  { label: "Languages", value: effectiveNip11.language_tags?.join(', ') },
                   { label: "Last Checked", value: timeAgo(relay.lastChecked) },
                 ].map(({ label, value }) =>
                   value ? (
@@ -273,7 +292,7 @@ export function RelayDetailPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                {relay.nip11.limitation && Object.entries(relay.nip11.limitation).map(([key, val]) => (
+                {effectiveNip11.limitation && Object.entries(effectiveNip11.limitation).map(([key, val]) => (
                   <div key={key} className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground text-xs">{key.replace(/_/g, " ")}</span>
                     <span className="font-medium text-xs">
@@ -289,8 +308,25 @@ export function RelayDetailPage() {
                     </span>
                   </div>
                 ))}
-                {(!relay.nip11.limitation || Object.keys(relay.nip11.limitation).length === 0) && (
+                {(!effectiveNip11.limitation || Object.keys(effectiveNip11.limitation).length === 0) && (
                   <p className="text-sm text-muted-foreground">No limitations specified</p>
+                )}
+                {/* Posting Policy + Terms links */}
+                {effectiveNip11.posting_policy && (
+                  <div className="flex items-center justify-between text-sm pt-1 border-t border-border/40">
+                    <span className="text-muted-foreground text-xs">Posting Policy</span>
+                    <a href={effectiveNip11.posting_policy} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline flex items-center gap-1">
+                      View <ExternalLink className="w-2.5 h-2.5" />
+                    </a>
+                  </div>
+                )}
+                {effectiveNip11.payments_url && (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground text-xs">Payments</span>
+                    <a href={effectiveNip11.payments_url} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline flex items-center gap-1">
+                      View <ExternalLink className="w-2.5 h-2.5" />
+                    </a>
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -446,7 +482,7 @@ export function RelayDetailPage() {
 
         {/* NIP-66 Tab */}
         <TabsContent value="nip66" className="space-y-4">
-          {!relay.nip66?.enriched ? (
+          {!relay.nip66?.enriched && !monitorEvent ? (
             <Card className="border-border/60">
               <CardContent className="py-10 text-center">
                 <Activity className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
@@ -465,16 +501,25 @@ export function RelayDetailPage() {
                   <CardTitle className="text-base flex items-center gap-2">
                     <Activity className="w-4 h-4 text-violet-500" />
                     NIP-66 Monitor Data
+                    {monitorEvent && (
+                      <span className="text-xs bg-emerald-500/15 text-emerald-500 border border-emerald-500/25 px-1.5 py-0.5 rounded-full font-medium ml-auto">
+                        Live
+                      </span>
+                    )}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {[
-                    { label: "Live Status", value: relay.nip66.liveStatus ?? "unknown" },
-                    { label: "Monitor Latency", value: relay.nip66.monitorLatencyMs != null ? `${relay.nip66.monitorLatencyMs}ms` : "N/A" },
-                    { label: "Last Event", value: relay.nip66.lastMonitorEvent ? timeAgo(relay.nip66.lastMonitorEvent) : "N/A" },
-                    { label: "Events/Day", value: relay.nip66.eventsPerDay?.toLocaleString() ?? "N/A" },
-                    { label: "Connected Users", value: relay.nip66.connectedUsers?.toLocaleString() ?? "N/A" },
-                    { label: "Monitor Pubkey", value: relay.nip66.monitorPubkey ? `${relay.nip66.monitorPubkey.slice(0, 16)}…` : "N/A" },
+                    { label: "Live Status", value: relay.nip66?.liveStatus ?? (monitorEvent ? "online" : "unknown") },
+                    { label: "RTT Open", value: monitorEvent?.rttOpen != null ? `${monitorEvent.rttOpen}ms` : (relay.nip66?.monitorLatencyMs != null ? `${relay.nip66.monitorLatencyMs}ms` : "N/A") },
+                    { label: "RTT Read", value: monitorEvent?.rttRead != null ? `${monitorEvent.rttRead}ms` : "N/A" },
+                    { label: "RTT Write", value: monitorEvent?.rttWrite != null ? `${monitorEvent.rttWrite}ms` : "N/A" },
+                    { label: "Last Event", value: monitorEvent ? timeAgo(monitorEvent.checkedAt * 1000) : (relay.nip66?.lastMonitorEvent ? timeAgo(relay.nip66.lastMonitorEvent) : "N/A") },
+                    { label: "Network", value: monitorEvent?.network ?? "clearnet" },
+                    { label: "Relay Type", value: monitorEvent?.relayType ?? "Standard" },
+                    { label: "Events/Day", value: relay.nip66?.eventsPerDay?.toLocaleString() ?? "N/A" },
+                    { label: "Connected Users", value: relay.nip66?.connectedUsers?.toLocaleString() ?? "N/A" },
+                    { label: "Monitor", value: (monitorEvent?.monitorPubkey ?? relay.nip66?.monitorPubkey) ? `${(monitorEvent?.monitorPubkey ?? relay.nip66?.monitorPubkey ?? '').slice(0, 16)}…` : "N/A" },
                   ].map(({ label, value }) => (
                     <div key={label} className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">{label}</span>
@@ -506,8 +551,76 @@ export function RelayDetailPage() {
                 </CardContent>
               </Card>
 
+              {/* Geolocation from geohash */}
+              {geoCoords && monitorEvent?.geohash && (
+                <Card className="border-border/60">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <MapPin className="w-4 h-4 text-violet-500" />
+                      Geolocation (NIP-66)
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {[
+                      { label: "Geohash", value: monitorEvent.geohash },
+                      { label: "Latitude", value: geoCoords.lat.toFixed(4) },
+                      { label: "Longitude", value: geoCoords.lng.toFixed(4) },
+                    ].map(({ label, value }) => (
+                      <div key={label} className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">{label}</span>
+                        <span className="font-medium font-mono text-xs">{value}</span>
+                      </div>
+                    ))}
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Location derived from NIP-66 monitor geohash. Precision depends on geohash length.
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Monitor requirements */}
+              {monitorEvent && (
+                <Card className="border-border/60">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Shield className="w-4 h-4 text-violet-500" />
+                      Requirements (NIP-66)
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    {[
+                      { label: "Auth Required", val: monitorEvent.requirements.auth },
+                      { label: "Payment Required", val: monitorEvent.requirements.payment },
+                      { label: "PoW Required", val: monitorEvent.requirements.pow },
+                      { label: "Accepts Writes", val: monitorEvent.requirements.writes },
+                    ].map(({ label, val }) => (
+                      <div key={label} className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">{label}</span>
+                        {val ? (
+                          <span className="text-yellow-500 flex items-center gap-1 text-xs"><AlertCircle className="w-3 h-3" /> Yes</span>
+                        ) : (
+                          <span className="text-emerald-500 flex items-center gap-1 text-xs"><CheckCircle2 className="w-3 h-3" /> No</span>
+                        )}
+                      </div>
+                    ))}
+                    {monitorEvent.supportedNips.length > 0 && (
+                      <div className="pt-2 border-t border-border/40">
+                        <p className="text-xs text-muted-foreground mb-1.5 font-medium">NIPs from Monitor ({monitorEvent.supportedNips.length})</p>
+                        <div className="flex flex-wrap gap-1">
+                          {monitorEvent.supportedNips.map((nip) => (
+                            <span key={nip} className="text-xs bg-muted text-muted-foreground px-1.5 py-0.5 rounded font-mono">
+                              {String(nip).padStart(2, '0')}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
               {/* Conflict warning */}
-              {relay.nip66.conflictsWithNip11 && (
+              {relay.nip66?.conflictsWithNip11 && (
                 <Card className="border-yellow-500/30 bg-yellow-500/5 md:col-span-2">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-base flex items-center gap-2 text-yellow-500">

@@ -1,26 +1,17 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useSeoMeta } from "@unhead/react";
-import { Search, Radio, TrendingUp, Globe2, Zap, Shield, ArrowRight, Star, CheckCircle2, Code2, Activity } from "lucide-react";
+import { Search, Radio, TrendingUp, Globe2, Zap, Shield, ArrowRight, Star, CheckCircle2, Code2, Activity, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { RelayCard } from "@/components/relay/RelayCard";
 import { UseCaseBadge } from "@/components/relay/UseCaseBadge";
-import { RELAY_SEED_DATA, STATS, USE_CASE_OPTIONS } from "@/data/relays";
-import type { UseCaseTag } from "@/types/relay";
+import { USE_CASE_OPTIONS } from "@/data/relays";
+import { useLiveRelayStore } from "@/hooks/useLiveRelayStore";
+import type { UseCaseTag, RelayRecord } from "@/types/relay";
 
-const FEATURED = RELAY_SEED_DATA.filter((r) => r.featured).slice(0, 4);
-const TOP_RELAYS = [...RELAY_SEED_DATA].sort((a, b) => b.uptimePercent30d - a.uptimePercent30d).slice(0, 6);
-
-const HERO_STATS = [
-  { label: "Relays Tracked", value: STATS.total.toString(), icon: Radio, color: "text-primary" },
-  { label: "Online Now", value: STATS.online.toString(), icon: TrendingUp, color: "text-emerald-500" },
-  { label: "NIP-66 Enriched", value: STATS.nip66Enriched.toString(), icon: Activity, color: "text-violet-500" },
-  { label: "Free Relays", value: STATS.free.toString(), icon: Globe2, color: "text-sky-500" },
-];
-
-const QUICK_FILTERS = [
+const QUICK_FILTERS: { label: string; params: string; emoji: string }[] = [
   { label: "Free Relays", params: "?pricing=free", emoji: "🆓" },
   { label: "High Uptime", params: "?minUptime=99", emoji: "⚡" },
   { label: "Privacy Focused", params: "?useCase=Privacy", emoji: "🛡️" },
@@ -39,10 +30,21 @@ const WHY_POINTS = [
 export function HomePage() {
   const [query, setQuery] = useState("");
   const navigate = useNavigate();
+  const { relays, stats } = useLiveRelayStore();
+
+  const FEATURED = useMemo(() => relays.filter((r) => r.featured).slice(0, 4), [relays]);
+  const TOP_RELAYS = useMemo(() => [...relays].sort((a, b) => b.uptimePercent30d - a.uptimePercent30d).slice(0, 6), [relays]);
+
+  const HERO_STATS = useMemo(() => [
+    { label: "Relays Tracked", value: stats.totalRelays.toString(), icon: Radio, color: "text-primary" },
+    { label: "Online Now", value: stats.onlineNow.toString(), icon: TrendingUp, color: "text-emerald-500" },
+    { label: "NIP-66 Enriched", value: stats.nip66Enriched.toString(), icon: Activity, color: "text-violet-500" },
+    { label: "Free Relays", value: stats.freeRelays.toString(), icon: Globe2, color: "text-sky-500" },
+  ], [stats]);
 
   useSeoMeta({
     title: "0xNostrRelays — Find the Perfect Nostr Relay",
-    description: `Discover and compare ${STATS.total}+ Nostr relays. Search by uptime, price, use case, and location. Find the perfect relay for your Nostr setup.`,
+    description: `Discover and compare ${stats.totalRelays}+ Nostr relays. Search by uptime, price, use case, and location. Find the perfect relay for your Nostr setup.`,
     ogTitle: "0xNostrRelays — Find the Perfect Nostr Relay",
     ogDescription: "The most comprehensive Nostr relay directory. Compare relays by uptime, pricing, NIPs, and use cases.",
   });
@@ -162,7 +164,7 @@ export function HomePage() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {FEATURED.map((relay) => (
-            <RelayCard key={relay.id} relay={relay} view="grid" />
+            <RelayCard key={relay.id} relay={relay as RelayRecord} view="grid" />
           ))}
         </div>
 
@@ -211,7 +213,7 @@ export function HomePage() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {TOP_RELAYS.map((relay) => (
-            <RelayCard key={relay.id} relay={relay} view="grid" />
+            <RelayCard key={relay.id} relay={relay as RelayRecord} view="grid" />
           ))}
         </div>
       </section>
@@ -286,7 +288,7 @@ export function HomePage() {
             <h3 className="font-bold mb-1.5">NIP-66 Enriched Data</h3>
             <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
               Official health data from nostr.watch-style monitors via kind:30166 and kind:10166 events.
-              {STATS.nip66Enriched} relays enriched so far.
+              {stats.nip66Enriched} relays enriched so far.
             </p>
             <Link to="/relays?nip66Only=true">
               <Button size="sm" variant="outline" className="gap-2 text-xs border-violet-500/30 text-violet-500 hover:bg-violet-500/10">
@@ -294,6 +296,35 @@ export function HomePage() {
                 View NIP-66 Relays
               </Button>
             </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* npub Lookup CTA */}
+      <section className="container mx-auto max-w-7xl px-4 py-8">
+        <div className="bg-gradient-to-br from-cyan-500/10 via-emerald-500/5 to-transparent border border-cyan-500/20 rounded-2xl p-6">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 bg-cyan-500/15 rounded-xl flex items-center justify-center flex-shrink-0">
+              <User className="w-6 h-6 text-cyan-500" />
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <h3 className="font-black text-lg">npub Relay Lookup</h3>
+                <span className="text-xs bg-cyan-500/15 text-cyan-500 border border-cyan-500/25 px-2 py-0.5 rounded-full font-bold">NEW</span>
+              </div>
+              <p className="text-sm text-muted-foreground mb-4">
+                Debug relay connectivity issues. Look up any Nostr user's relay list (NIP-65) and see which relays they
+                publish to and read from — with live status checks.
+              </p>
+              <div className="flex gap-2">
+                <Link to="/lookup">
+                  <Button size="sm" className="gap-2">
+                    <User className="w-3.5 h-3.5" />
+                    Look Up npub
+                  </Button>
+                </Link>
+              </div>
+            </div>
           </div>
         </div>
       </section>

@@ -24,6 +24,7 @@ import { genUserName } from "@/lib/genUserName";
 const NAV_LINKS = [
   { href: "/", label: "Home" },
   { href: "/relays", label: "Explore" },
+  { href: "/lookup", label: "Lookup" },
   { href: "/api", label: "API" },
   { href: "/submit", label: "Submit" },
   { href: "/about", label: "About" },

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useSeoMeta } from "@unhead/react";
 import { useSearchParams } from "react-router-dom";
 import { Grid3X3, List, Search, SlidersHorizontal, X } from "lucide-react";
@@ -9,15 +9,19 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { Skeleton } from "@/components/ui/skeleton";
 import { RelayCard } from "@/components/relay/RelayCard";
 import { RelayFilters, type RelayFiltersState, DEFAULT_FILTERS } from "@/components/relay/RelayFilters";
-import { useRelayData } from "@/hooks/useRelayData";
+import { NIPFilterPresets } from "@/components/relay/NIPFilterPresets";
+import { useLiveRelayStore } from "@/hooks/useLiveRelayStore";
 import { filterRelays } from "@/lib/utils";
-import type { UseCaseTag } from "@/types/relay";
+import type { UseCaseTag, RelayRecord } from "@/types/relay";
 
 export function RelaysPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { relays, loading } = useRelayData();
+  const { relays, loading, stats } = useLiveRelayStore();
   const [view, setView] = useState<"grid" | "list">("grid");
   const [search, setSearch] = useState(searchParams.get("q") ?? "");
+
+  const [activeNips, setActiveNips] = useState<number[]>([]);
+  const [activeFeatures, setActiveFeatures] = useState<string[]>([]);
 
   const [filters, setFilters] = useState<RelayFiltersState>(() => ({
     ...DEFAULT_FILTERS,
@@ -29,28 +33,47 @@ export function RelaysPage() {
     blossomOnly: searchParams.get("blossomOnly") === "true",
   }));
 
+  const toggleNip = useCallback((nip: number) => {
+    setActiveNips((prev) =>
+      prev.includes(nip) ? prev.filter((n) => n !== nip) : [...prev, nip]
+    );
+  }, []);
+
+  const toggleFeature = useCallback((key: string) => {
+    setActiveFeatures((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
+    );
+  }, []);
+
   // Sync search param changes
   useEffect(() => {
     const q = searchParams.get("q") ?? "";
     setSearch(q);
   }, [searchParams]);
 
-  const filtered = useMemo(
-    () =>
-      filterRelays(relays, {
-        search: search || undefined,
-        pricing: filters.pricing,
-        minUptime: filters.minUptime || undefined,
-        countryCodes: filters.countryCodes.length ? filters.countryCodes : undefined,
-        useCases: filters.useCases.length ? filters.useCases : undefined,
-        communityTags: filters.communityTags.length ? filters.communityTags : undefined,
-        onlineOnly: filters.onlineOnly,
-        blossomOnly: filters.blossomOnly,
-        nip66Only: filters.nip66Only,
-        sortBy: filters.sortBy,
-      }),
-    [relays, search, filters]
-  );
+  const filtered = useMemo(() => {
+    // First apply standard filters
+    let result = filterRelays(relays as RelayRecord[], {
+      search: search || undefined,
+      pricing: filters.pricing,
+      minUptime: filters.minUptime || undefined,
+      countryCodes: filters.countryCodes.length ? filters.countryCodes : undefined,
+      useCases: filters.useCases.length ? filters.useCases : undefined,
+      communityTags: filters.communityTags.length ? filters.communityTags : undefined,
+      nips: activeNips.length ? activeNips : undefined,
+      onlineOnly: filters.onlineOnly,
+      blossomOnly: activeFeatures.includes('blossom') || filters.blossomOnly,
+      nip66Only: filters.nip66Only,
+      sortBy: filters.sortBy,
+    });
+
+    // Apply feature filters from NIP presets
+    if (activeFeatures.includes('paid')) {
+      result = result.filter((r) => !r.isFree);
+    }
+
+    return result;
+  }, [relays, search, filters, activeNips, activeFeatures]);
 
   useSeoMeta({
     title: "Relay Explorer — 0xNostrRelays",
@@ -159,6 +182,17 @@ export function RelaysPage() {
             />
           </SheetContent>
         </Sheet>
+      </div>
+
+      {/* NIP Filter Presets */}
+      <div className="mb-6">
+        <NIPFilterPresets
+          stats={stats}
+          activeNips={activeNips}
+          activeFeatures={activeFeatures}
+          onToggleNip={toggleNip}
+          onToggleFeature={toggleFeature}
+        />
       </div>
 
       <div className="flex gap-6">

@@ -171,6 +171,15 @@
   .sparkline-bar {
     @apply rounded-sm transition-all duration-300;
   }
+
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 /* Smooth page transitions */

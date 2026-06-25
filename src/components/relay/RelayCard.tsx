@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Copy, Check, ExternalLink, Globe2, Clock, Wifi, Droplets, Download } from "lucide-react";
+import { Copy, Check, ExternalLink, Globe2, Clock, Wifi, Droplets, Download, Activity } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -220,9 +220,17 @@ export function RelayCard({ relay, view = "grid" }: RelayCardProps) {
 
           {/* Footer meta */}
           <div className="flex items-center justify-between text-xs text-muted-foreground pt-1 border-t border-border/40">
-            <div className="flex items-center gap-1">
-              <Globe2 className="w-3 h-3" />
-              <span>{relay.countryName ?? "Unknown"}</span>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1">
+                <Globe2 className="w-3 h-3" />
+                <span>{relay.countryName ?? "Unknown"}</span>
+              </div>
+              {relay.avgLatencyMs != null && (
+                <div className="flex items-center gap-1">
+                  <Wifi className="w-3 h-3" />
+                  <span className="tabular-nums">{relay.avgLatencyMs}ms</span>
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-1">
               <Clock className="w-3 h-3" />
