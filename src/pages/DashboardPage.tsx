@@ -34,6 +34,7 @@ import {
   OWNER_PUBKEY_HEX, ADMIN_ROLES_D_TAG, MOD_ROLES_D_TAG,
   APP_RELAY_URL, APP_RELAY_URLS, APP_NPUB,
 } from '@/lib/constants';
+import { nip19 } from 'nostr-tools';
 import { genUserName } from '@/lib/genUserName';
 import { timeAgo, shortenUrl } from '@/lib/utils';
 
@@ -187,6 +188,53 @@ function SubmissionRow({
   );
 }
 
+// ─── Pubkey resolver ──────────────────────────────────────────────────────────
+/**
+ * Resolves an npub, nprofile, or hex pubkey to a 64-char hex string.
+ * Returns { hex } on success or { error } on failure.
+ */
+function resolvePubkey(input: string): { hex: string } | { error: string } {
+  const trimmed = input.trim();
+
+  // Already a valid 64-char hex?
+  if (/^[0-9a-f]{64}$/i.test(trimmed)) {
+    return { hex: trimmed.toLowerCase() };
+  }
+
+  // Strip optional nostr: prefix
+  const cleaned = trimmed.replace(/^nostr:/, '');
+
+  // Try to decode as npub or nprofile
+  try {
+    const decoded = nip19.decode(cleaned);
+
+    if (decoded.type === 'npub') {
+      return { hex: decoded.data };
+    }
+    if (decoded.type === 'nprofile') {
+      return { hex: decoded.data.pubkey };
+    }
+
+    return { error: `Unsupported identifier type: ${decoded.type}. Use an npub, nprofile, or hex pubkey.` };
+  } catch {
+    // Not a valid NIP-19 identifier
+  }
+
+  return { error: 'Invalid input. Paste an npub (npub1…), nprofile (nprofile1…), or 64-char hex pubkey.' };
+}
+
+/**
+ * Converts a hex pubkey to a truncated npub for display.
+ */
+function hexToShortNpub(hex: string): string {
+  try {
+    const npub = nip19.npubEncode(hex);
+    return `${npub.slice(0, 12)}…${npub.slice(-6)}`;
+  } catch {
+    return `${hex.slice(0, 10)}…`;
+  }
+}
+
 // ─── Role Manager ────────────────────────────────────────────────────────────
 function RoleManager({
   title, dTag, members, canEdit,
@@ -195,19 +243,56 @@ function RoleManager({
 }) {
   const [newPubkey, setNewPubkey] = useState('');
   const [error, setError] = useState('');
+  const [resolvedPreview, setResolvedPreview] = useState<string | null>(null);
   const { mutateAsync: updateRoles, isPending } = useUpdateRoleList();
 
-  const isValidHex = (s: string) => /^[0-9a-f]{64}$/i.test(s.trim());
+  const handleInputChange = (val: string) => {
+    setNewPubkey(val);
+    setError('');
+
+    // Show a live preview of what we resolved
+    const trimmed = val.trim();
+    if (!trimmed) {
+      setResolvedPreview(null);
+      return;
+    }
+
+    const result = resolvePubkey(trimmed);
+    if ('hex' in result) {
+      setResolvedPreview(result.hex);
+    } else {
+      setResolvedPreview(null);
+    }
+  };
 
   const add = async () => {
-    const pk = newPubkey.trim().toLowerCase();
-    if (!isValidHex(pk)) { setError('Must be a valid 64-char hex pubkey'); return; }
-    if (members.includes(pk)) { setError('Already in list'); return; }
+    const result = resolvePubkey(newPubkey);
+
+    if ('error' in result) {
+      setError(result.error);
+      return;
+    }
+
+    if (members.includes(result.hex)) {
+      setError('Already in the list');
+      return;
+    }
+
     try {
-      await updateRoles({ dTag, pubkeys: [...members, pk] });
+      await updateRoles({ dTag, pubkeys: [...members, result.hex] });
       setNewPubkey('');
+      setResolvedPreview(null);
       setError('');
-    } catch (e) { setError(String(e)); }
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      add();
+    }
   };
 
   const remove = async (pk: string) => {
@@ -231,13 +316,18 @@ function RoleManager({
         ) : (
           <div className="space-y-2">
             {members.map((pk) => (
-              <div key={pk} className="flex items-center justify-between">
-                <PubkeyDisplay pubkey={pk} />
+              <div key={pk} className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <PubkeyDisplay pubkey={pk} />
+                  <code className="text-[10px] text-muted-foreground/60 font-mono hidden sm:block">
+                    {hexToShortNpub(pk)}
+                  </code>
+                </div>
                 {canEdit && (
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="h-6 w-6 p-0 text-red-500 hover:bg-red-500/10"
+                    className="h-6 w-6 p-0 text-red-500 hover:bg-red-500/10 flex-shrink-0"
                     onClick={() => remove(pk)}
                     disabled={isPending}
                   >
@@ -256,8 +346,9 @@ function RoleManager({
               <div className="flex gap-2">
                 <Input
                   value={newPubkey}
-                  onChange={(e) => { setNewPubkey(e.target.value); setError(''); }}
-                  placeholder="Hex pubkey (64 chars)…"
+                  onChange={(e) => handleInputChange(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="npub1… or nprofile1… or hex pubkey"
                   className="font-mono text-xs h-8"
                 />
                 <Button size="sm" className="h-8 gap-1 flex-shrink-0" onClick={add} disabled={isPending || !newPubkey}>
@@ -265,10 +356,25 @@ function RoleManager({
                   Add
                 </Button>
               </div>
+
+              {/* Live resolution preview */}
+              {resolvedPreview && !error && (
+                <div className="flex items-center gap-2 text-xs bg-emerald-500/5 border border-emerald-500/20 rounded-lg px-2.5 py-1.5">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-500 flex-shrink-0" />
+                  <span className="text-muted-foreground">Resolved:</span>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <PubkeyDisplay pubkey={resolvedPreview} />
+                  </div>
+                </div>
+              )}
+
               {error && <p className="text-xs text-red-500">{error}</p>}
+
               <p className="text-xs text-muted-foreground">
-                Paste the hex pubkey (not npub). Published as kind:30078 to{' '}
-                <code className="bg-muted px-1 rounded">{shortenUrl(APP_RELAY_URL)}</code>.
+                Paste an <strong>npub</strong>, <strong>nprofile</strong>, or hex pubkey.
+                Published as kind:30078 to{' '}
+                <code className="bg-muted px-1 rounded">{shortenUrl(APP_RELAY_URL)}</code>{' '}
+                + {APP_RELAY_URLS.length - 1} other relays.
               </p>
             </div>
           </>
