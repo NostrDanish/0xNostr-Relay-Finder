@@ -32,7 +32,7 @@ import {
 import { RELAY_SEED_DATA, STATS } from '@/data/relays';
 import {
   OWNER_PUBKEY_HEX, ADMIN_ROLES_D_TAG, MOD_ROLES_D_TAG,
-  APP_RELAY_URL, APP_NPUB,
+  APP_RELAY_URL, APP_RELAY_URLS, APP_NPUB,
 } from '@/lib/constants';
 import { genUserName } from '@/lib/genUserName';
 import { timeAgo, shortenUrl } from '@/lib/utils';

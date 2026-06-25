@@ -23,7 +23,7 @@ import { useRelaySubmit } from "@/hooks/useRelaySubmit";
 import type { RelaySubmissionPayload } from "@/hooks/useRelaySubmit";
 import type { UseCaseTag } from "@/types/relay";
 import { cn, shortenUrl } from "@/lib/utils";
-import { APP_RELAY_URL as APP_RELAY, APP_NPUB } from "@/lib/constants";
+import { APP_RELAY_PRIMARY as APP_RELAY, APP_NPUB } from "@/lib/constants";
 
 function StepBadge({ n, active, done }: { n: number; active: boolean; done: boolean }) {
   return (

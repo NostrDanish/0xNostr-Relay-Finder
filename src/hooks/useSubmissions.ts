@@ -3,6 +3,7 @@ import { useNostr } from '@nostrify/react';
 import type { NostrEvent } from '@nostrify/nostrify';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import {
+  APP_RELAY_URLS,
   APP_RELAY_URL,
   OWNER_PUBKEY_HEX,
   KIND_RELAY_SUBMISSION,
@@ -99,15 +100,15 @@ function parseReport(ev: NostrEvent): Report | null {
 
 // ─── Hooks ─────────────────────────────────────────────────────────────────
 
-/** Query ALL submissions from the app relay */
+/** Query ALL submissions from the app relay group */
 export function useSubmissions(filter?: { status?: SubmissionStatus; limit?: number }) {
   const { nostr } = useNostr();
 
   return useQuery({
-    queryKey: ['submissions', APP_RELAY_URL, filter?.status],
+    queryKey: ['submissions', ...APP_RELAY_URLS, filter?.status],
     queryFn: async () => {
-      const relay = nostr.relay(APP_RELAY_URL);
-      const events = await relay.query([
+      const relayGroup = nostr.group(APP_RELAY_URLS);
+      const events = await relayGroup.query([
         {
           kinds: [KIND_RELAY_SUBMISSION],
           '#t': ['relay-submission'],
@@ -143,10 +144,10 @@ export function useReports() {
   const { nostr } = useNostr();
 
   return useQuery({
-    queryKey: ['relay-reports', APP_RELAY_URL],
+    queryKey: ['relay-reports', ...APP_RELAY_URLS],
     queryFn: async () => {
-      const relay = nostr.relay(APP_RELAY_URL);
-      const events = await relay.query([
+      const relayGroup = nostr.group(APP_RELAY_URLS);
+      const events = await relayGroup.query([
         {
           kinds: [KIND_RELAY_REPORT],
           '#t': ['relay-issue'],
@@ -233,8 +234,8 @@ export function useApproveSubmission() {
         created_at: Math.floor(Date.now() / 1000),
       });
 
-      const relay = nostr.relay(APP_RELAY_URL);
-      await relay.event(event);
+      const relayGroup = nostr.group(APP_RELAY_URLS);
+      await relayGroup.event(event);
       return event;
     },
     onSuccess: () => {
@@ -271,8 +272,8 @@ export function useUpdateRoleList() {
         created_at: Math.floor(Date.now() / 1000),
       });
 
-      const relay = nostr.relay(APP_RELAY_URL);
-      await relay.event(event);
+      const relayGroup = nostr.group(APP_RELAY_URLS);
+      await relayGroup.event(event);
       return event;
     },
     onSuccess: () => {

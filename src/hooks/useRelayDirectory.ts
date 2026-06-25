@@ -3,7 +3,7 @@ import { useNostr } from '@nostrify/react';
 import type { NostrEvent } from '@nostrify/nostrify';
 import type { RelayRecord, UseCaseTag, NIP11Info } from '@/types/relay';
 import {
-  APP_RELAY_URL,
+  APP_RELAY_URLS,
   KIND_RELAY_SUBMISSION,
   RELAY_SUBMISSION_D_PREFIX,
 } from '@/lib/constants';
@@ -78,7 +78,7 @@ function parseSubmissionEvent(event: NostrEvent): RelayRecord | null {
 }
 
 /**
- * Subscribes to the 0xPrivacy relay for kind:30078 relay submission events
+ * Subscribes to the 0xPrivacy relay group for kind:30078 relay submission events
  * and merges them with the seed data to form the full directory.
  *
  * Deduplication: seed data takes precedence for known relays (matched by URL).
@@ -88,13 +88,13 @@ export function useRelayDirectory() {
   const { nostr } = useNostr();
 
   return useQuery({
-    queryKey: ['relay-directory', APP_RELAY_URL],
+    queryKey: ['relay-directory', ...APP_RELAY_URLS],
     queryFn: async () => {
       try {
-        // Query the app relay for all submission events
-        const appRelay = nostr.relay(APP_RELAY_URL);
+        // Query both app relays for all submission events
+        const relayGroup = nostr.group(APP_RELAY_URLS);
 
-        const events = await appRelay.query([
+        const events = await relayGroup.query([
           {
             kinds: [KIND_RELAY_SUBMISSION],
             '#t': ['relay-submission'],
@@ -128,7 +128,7 @@ export function useRelayDirectory() {
 
         return submittedRecords;
       } catch (err) {
-        console.warn('[useRelayDirectory] Could not fetch from app relay:', err);
+        console.warn('[useRelayDirectory] Could not fetch from app relays:', err);
         return [] as RelayRecord[];
       }
     },

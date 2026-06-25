@@ -1,17 +1,11 @@
 import { useState, useCallback } from 'react';
 import { useNostr } from '@nostrify/react';
 import type { NIP66Data } from '@/types/relay';
-
-// NIP-66 kind numbers
-const KIND_RELAY_DISCOVERY = 30166; // Relay Discovery / Health events
-const KIND_MONITOR_ANNOUNCEMENT = 10166; // Monitor Announcements
-
-// Known nostr.watch-style monitor pubkeys
-const TRUSTED_MONITOR_PUBKEYS = [
-  'cf45a6ba1363ad7ed213a078e710d24f2b7a9be1929acabb228084d29b3e08f8',
-  'a8e76c3ace7829f9ee44cf9293309e21a1824bf1e57631d00685a1ed0b0bd8a2',
-  'febbaba219357c6c64adfa2e01789f274aa60e90c289938bfc80dd91facb3ea4',
-];
+import {
+  KIND_RELAY_DISCOVERY,
+  KIND_MONITOR_ANNOUNCEMENT,
+  TRUSTED_MONITOR_PUBKEYS,
+} from '@/lib/constants';
 
 interface NIP66EventContent {
   network?: string;
@@ -23,16 +17,16 @@ interface NIP66EventContent {
 }
 
 interface NIP66Tags {
-  r?: string; // relay URL
-  R?: string; // relay URL (alt)
-  n?: string; // network
-  N?: string; // NIP numbers
-  rtt?: string; // round-trip time
-  up?: string; // uptime percentage
-  ts?: string; // timestamp
-  c?: string; // capabilities
-  T?: string; // status
-  d?: string; // d-tag for addressable
+  r?: string;
+  R?: string;
+  n?: string;
+  N?: string;
+  rtt?: string;
+  up?: string;
+  ts?: string;
+  c?: string;
+  T?: string;
+  d?: string;
 }
 
 function parseTagsToObject(tags: string[][]): NIP66Tags {
@@ -100,9 +94,6 @@ export function useNIP66Fetch() {
       // Parse RTT from tag
       const rttMs = tags.rtt ? parseInt(tags.rtt) : undefined;
 
-      // Parse uptime from tag
-      // const uptimeVal = tags.up ? parseFloat(tags.up) : undefined;
-
       // Parse capabilities
       const capsTag = latest.tags.find(t => t[0] === 'c');
       const capStr = capsTag ? capsTag.slice(1).join(',') : '';
@@ -155,7 +146,7 @@ export interface MonitorInfo {
   pubkey: string;
   name?: string;
   description?: string;
-  frequency?: number; // seconds between checks
+  frequency?: number;
   endpoint?: string;
 }
 

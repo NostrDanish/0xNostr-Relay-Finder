@@ -19,6 +19,7 @@ import { UseCaseBadge } from "@/components/relay/UseCaseBadge";
 import { NIP66Badge } from "@/components/relay/NIP66Badge";
 import { VotingPanel } from "@/components/relay/VotingPanel";
 import { UptimeHistoryChart } from "@/components/charts/UptimeHistoryChart";
+import { AutoTagsPanel } from "@/components/relay/AutoTagsPanel";
 import { useRelayById } from "@/hooks/useRelayData";
 import { useRelayTest } from "@/hooks/useRelayTest";
 import { shortenUrl, getNipName, formatPrice, timeAgo, formatLatency, relayUrlToId } from "@/lib/utils";
@@ -222,6 +223,10 @@ export function RelayDetailPage() {
           <TabsTrigger value="community" className="flex items-center gap-1">
             <ThumbsUp className="w-3 h-3" />
             Community
+          </TabsTrigger>
+          <TabsTrigger value="autotags" className="flex items-center gap-1">
+            <Code2 className="w-3 h-3" />
+            Auto-Tags
           </TabsTrigger>
           <TabsTrigger value="nips">NIPs</TabsTrigger>
           <TabsTrigger value="pricing">Pricing</TabsTrigger>
@@ -583,6 +588,11 @@ export function RelayDetailPage() {
               </CardContent>
             </Card>
           )}
+        </TabsContent>
+
+        {/* Auto-Tags Tab */}
+        <TabsContent value="autotags" className="space-y-4">
+          <AutoTagsPanel relay={relay} />
         </TabsContent>
 
         {/* NIPs Tab */}

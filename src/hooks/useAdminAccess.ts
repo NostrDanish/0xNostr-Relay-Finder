@@ -6,7 +6,7 @@ import {
   ADMIN_ROLES_D_TAG,
   MOD_ROLES_D_TAG,
   KIND_RELAY_SUBMISSION,
-  APP_RELAY_URL,
+  APP_RELAY_URLS,
   type AppRole,
 } from '@/lib/constants';
 
@@ -25,12 +25,12 @@ export function useAdminAccess() {
   const { user } = useCurrentUser();
 
   const { data: roles, isLoading } = useQuery({
-    queryKey: ['admin-roles', APP_RELAY_URL],
+    queryKey: ['admin-roles', ...APP_RELAY_URLS],
     queryFn: async () => {
-      const relay = nostr.relay(APP_RELAY_URL);
+      const relayGroup = nostr.group(APP_RELAY_URLS);
 
       // Fetch admin and mod role list events (published by the owner)
-      const events = await relay.query([
+      const events = await relayGroup.query([
         {
           kinds: [KIND_RELAY_SUBMISSION],
           authors: [OWNER_PUBKEY_HEX],

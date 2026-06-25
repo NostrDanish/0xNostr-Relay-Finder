@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ThumbsUp, Sparkles, Info, LogIn } from 'lucide-react';
+import { ThumbsUp, Sparkles, Info, LogIn, Shield, ArrowUp, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
@@ -7,6 +7,8 @@ import type { RelayRecord, VoteTag, CommunityTagVote } from '@/types/relay';
 import { ALL_VOTE_TAGS } from '@/types/relay';
 import { useRelayVotes } from '@/hooks/useRelayVotes';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { useWoT, getWoTLevel, getWoTLabel, getWoTColor, type WoTData } from '@/hooks/useWoT';
+import { OWNER_PUBKEY_HEX } from '@/lib/constants';
 
 const TAG_COLORS: Record<VoteTag, string> = {
   'Best for Images': 'bg-pink-500/15 text-pink-600 dark:text-pink-400 border-pink-500/25 hover:bg-pink-500/25',
@@ -48,20 +50,29 @@ interface VotingPanelProps {
 
 export function VotingPanel({ relay }: VotingPanelProps) {
   const { user } = useCurrentUser();
-  const { hasVoted, castVote, removeVote, justVoted, computeAggregated } = useRelayVotes(
-    relay.url,
-    user?.pubkey
-  );
+  const {
+    hasVoted, castVote, castUpvote, hasUpvoted,
+    justVoted, upvoteScore, computeAggregated,
+    isPublishing,
+  } = useRelayVotes(relay.url, user?.pubkey);
+  const { data: wotData } = useWoT();
   const [showAll, setShowAll] = useState(false);
 
   const aggregated = computeAggregated(relay.communityTags);
   const topTags = aggregated.slice(0, showAll ? undefined : 8);
   const totalVotes = aggregated.reduce((s, t) => s + t.upvotes, 0);
 
+  // Compute user's WoT level for display
+  const userWoTLevel = user?.pubkey
+    ? getWoTLevel(user.pubkey, wotData ?? { level1: new Set(), level2: new Set(), anchors: [OWNER_PUBKEY_HEX] })
+    : 3;
+  const userWoTLabel = getWoTLabel(userWoTLevel);
+  const userWoTColorClass = getWoTColor(userWoTLevel);
+
   const handleVote = (tag: VoteTag) => {
     if (!user) return;
-    if (hasVoted(tag)) removeVote(tag);
-    else castVote(tag);
+    if (hasVoted(tag)) return; // Can't un-vote on Nostr (immutable events)
+    castVote(tag);
   };
 
   return (
@@ -78,23 +89,64 @@ export function VotingPanel({ relay }: VotingPanelProps) {
               </TooltipTrigger>
               <TooltipContent className="max-w-xs">
                 <p className="text-xs">
-                  Nostr-logged-in users can vote once per tag. Votes are public and tied to your Nostr identity.
-                  Community votes influence the relay's discovery ranking.
+                  Votes are published as Nostr events and weighted by Web of Trust.
+                  Users closer to the app team in the follow graph have more influence.
+                  All votes are permanent and tied to your Nostr identity.
                 </p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         </div>
-        {totalVotes > 0 && (
-          <span className="text-xs text-muted-foreground">{totalVotes} total votes</span>
-        )}
+        <div className="flex items-center gap-2">
+          {totalVotes > 0 && (
+            <span className="text-xs text-muted-foreground">{totalVotes} total votes</span>
+          )}
+          {upvoteScore !== 0 && (
+            <span className={cn(
+              'text-xs font-bold flex items-center gap-0.5',
+              upvoteScore > 0 ? 'text-emerald-500' : 'text-red-500'
+            )}>
+              <ArrowUp className={cn('w-3 h-3', upvoteScore < 0 && 'rotate-180')} />
+              {Math.abs(upvoteScore)}
+            </span>
+          )}
+        </div>
       </div>
+
+      {/* WoT badge + Upvote button */}
+      {user && (
+        <div className="flex items-center gap-3 bg-muted/30 border border-border/40 rounded-lg px-3 py-2.5">
+          <div className="flex items-center gap-2 flex-1">
+            <Shield className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+            <div className="text-xs">
+              <span className="text-muted-foreground">Your trust level: </span>
+              <span className={cn('inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-xs font-medium', userWoTColorClass)}>
+                {userWoTLabel}
+              </span>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            variant={hasUpvoted ? "default" : "outline"}
+            className="gap-1.5 h-7 text-xs"
+            onClick={() => castUpvote()}
+            disabled={hasUpvoted || isPublishing}
+          >
+            {isPublishing ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <ArrowUp className="w-3 h-3" />
+            )}
+            {hasUpvoted ? 'Upvoted' : 'Upvote Relay'}
+          </Button>
+        </div>
+      )}
 
       {/* Login prompt */}
       {!user && (
         <div className="flex items-center gap-2 bg-muted/40 border border-border/40 rounded-lg px-3 py-2.5 text-sm text-muted-foreground">
           <LogIn className="w-3.5 h-3.5 flex-shrink-0" />
-          <span>Log in with Nostr to vote on tags for this relay.</span>
+          <span>Log in with Nostr to vote. Votes are on-chain and WoT-weighted.</span>
         </div>
       )}
 
@@ -106,14 +158,15 @@ export function VotingPanel({ relay }: VotingPanelProps) {
               <div className="flex items-center justify-between text-xs">
                 <button
                   onClick={() => handleVote(tag as VoteTag)}
-                  disabled={!user}
+                  disabled={!user || hasVoted(tag as VoteTag) || isPublishing}
                   className={cn(
                     'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-medium transition-all text-xs',
                     hasVoted(tag as VoteTag)
                       ? ACTIVE_TAG_COLORS[tag as VoteTag]
                       : TAG_COLORS[tag as VoteTag],
                     !user && 'opacity-60 cursor-not-allowed',
-                    user && 'cursor-pointer',
+                    user && !hasVoted(tag as VoteTag) && 'cursor-pointer',
+                    hasVoted(tag as VoteTag) && 'cursor-default',
                     justVoted === tag && 'scale-105'
                   )}
                 >
@@ -148,13 +201,14 @@ export function VotingPanel({ relay }: VotingPanelProps) {
         <div>
           <div className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
             <Sparkles className="w-3 h-3" />
-            Click to vote for tags (click again to remove)
+            Click to vote for tags (votes are permanent Nostr events)
           </div>
           <div className="flex flex-wrap gap-1.5">
             {ALL_VOTE_TAGS.filter((tag) => !aggregated.some((a) => a.tag === tag)).map((tag) => (
               <button
                 key={tag}
                 onClick={() => handleVote(tag as VoteTag)}
+                disabled={hasVoted(tag as VoteTag) || isPublishing}
                 className={cn(
                   'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 font-medium text-xs transition-all',
                   hasVoted(tag as VoteTag)
@@ -176,7 +230,7 @@ export function VotingPanel({ relay }: VotingPanelProps) {
       {justVoted && (
         <div className="flex items-center gap-2 text-xs text-emerald-500 animate-in fade-in-0 slide-in-from-bottom-2 duration-300">
           <Sparkles className="w-3.5 h-3.5" />
-          <span>Voted <strong>"{justVoted}"</strong> — thanks! Your vote is recorded.</span>
+          <span>Voted <strong>&quot;{justVoted}&quot;</strong> — published to Nostr! WoT-weighted score applied.</span>
         </div>
       )}
     </div>

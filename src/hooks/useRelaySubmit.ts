@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { useNostr } from '@nostrify/react';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import {
-  APP_RELAY_URL,
+  APP_RELAY_URLS,
   APP_PUBKEY_HEX,
   KIND_RELAY_SUBMISSION,
   RELAY_SUBMISSION_D_PREFIX,
@@ -140,11 +140,11 @@ export function useRelaySubmit() {
           tags.push(['p', APP_PUBKEY_HEX]);
         }
 
-        // ── Step 4: Publish via our app relay ─────────────────────────────
+        // ── Step 4: Publish via our app relay group ─────────────────────
         setResult({ status: 'publishing' });
 
-        // Use the app relay specifically
-        const appRelay = nostr.relay(APP_RELAY_URL);
+        // Use both app relays
+        const relayGroup = nostr.group(APP_RELAY_URLS);
 
         const event = await user.signer.signEvent({
           kind: KIND_RELAY_SUBMISSION,
@@ -153,13 +153,13 @@ export function useRelaySubmit() {
           created_at: Math.floor(Date.now() / 1000),
         });
 
-        await appRelay.event(event);
+        await relayGroup.event(event);
 
         // Also publish to the default pool for discoverability
         try {
           await nostr.event(event);
         } catch {
-          // Non-fatal if broader publish fails; we got the app relay
+          // Non-fatal if broader publish fails; we got the app relays
         }
 
         setResult({
