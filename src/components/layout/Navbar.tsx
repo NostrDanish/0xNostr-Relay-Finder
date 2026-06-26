@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Search, Menu, X, Zap, Moon, Sun, Radio,
   LogOut, LayoutDashboard, User, ChevronDown,
-  Crown, Shield, UserCog, Settings,
+  Crown, Shield, UserCog, Settings, ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -210,7 +210,28 @@ export function Navbar() {
   ];
 
   return (
-    <header className="sticky top-0 z-50 w-full glass border-b border-border/50">
+    <header className="sticky top-0 z-50 w-full">
+      {/* 0xPrivacy ecosystem bar */}
+      <div className="hidden md:block bg-gradient-to-r from-primary/5 via-violet-500/5 to-primary/5 border-b border-border/30">
+        <div className="container mx-auto max-w-7xl px-4 py-1 flex items-center justify-center gap-2 text-xs text-muted-foreground">
+          <Shield className="w-3 h-3 text-primary/70" />
+          <span>
+            Part of the{" "}
+            <a
+              href="https://0xPrivacy.online"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-primary hover:underline"
+            >
+              0xPrivacy.online
+            </a>{" "}
+            ecosystem
+          </span>
+          <span className="text-border/80">|</span>
+          <span className="text-muted-foreground/60">Privacy-first tools for the decentralized web</span>
+        </div>
+      </div>
+      <div className="glass border-b border-border/50">
       <div className="container mx-auto max-w-7xl px-4">
         <div className="flex h-16 items-center justify-between gap-4">
           {/* Logo */}
@@ -385,6 +406,7 @@ export function Navbar() {
           </div>
         </div>
       )}
+      </div>
     </header>
   );
 }

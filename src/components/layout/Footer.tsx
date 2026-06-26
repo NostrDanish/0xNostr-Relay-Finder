@@ -1,9 +1,28 @@
 import { Link } from "react-router-dom";
-import { Radio, Github, ExternalLink } from "lucide-react";
+import { Radio, Github, ExternalLink, Shield } from "lucide-react";
 
 export function Footer() {
   return (
     <footer className="border-t border-border/50 bg-background/50 mt-20">
+      {/* 0xPrivacy ecosystem banner */}
+      <div className="bg-gradient-to-r from-primary/5 via-violet-500/5 to-primary/5 border-b border-border/30">
+        <div className="container mx-auto max-w-7xl px-4 py-3 flex flex-col sm:flex-row items-center justify-center gap-2 text-sm">
+          <Shield className="w-4 h-4 text-primary flex-shrink-0" />
+          <span className="text-muted-foreground text-center">
+            Part of the{" "}
+            <a
+              href="https://0xPrivacy.online"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-primary hover:underline"
+            >
+              0xPrivacy.online
+            </a>{" "}
+            ecosystem — building privacy-first tools for the decentralized web.
+          </span>
+        </div>
+      </div>
+
       <div className="container mx-auto max-w-7xl px-4 py-12">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           {/* Brand */}
@@ -20,17 +39,27 @@ export function Footer() {
             <p className="text-xs text-muted-foreground leading-relaxed">
               The most comprehensive Nostr relay directory. Find the perfect relay for your needs.
             </p>
-            <p className="text-xs text-muted-foreground">
-              Vibed with{" "}
+            <div className="flex flex-col gap-1.5">
               <a
-                href="https://shakespeare.diy"
+                href="https://0xPrivacy.online"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-primary hover:underline"
+                className="text-xs text-primary/80 hover:text-primary hover:underline transition-colors flex items-center gap-1"
               >
-                Shakespeare
+                0xPrivacy.online <ExternalLink className="w-2.5 h-2.5" />
               </a>
-            </p>
+              <p className="text-xs text-muted-foreground">
+                Vibed with{" "}
+                <a
+                  href="https://shakespeare.diy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline"
+                >
+                  Shakespeare
+                </a>
+              </p>
+            </div>
           </div>
 
           {/* Explore */}
@@ -79,7 +108,18 @@ export function Footer() {
         </div>
 
         <div className="mt-10 pt-6 border-t border-border/50 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-muted-foreground">
-          <p>© 2024 0xNostrRelays. Built for the Nostr community.</p>
+          <p>
+            © {new Date().getFullYear()}{" "}
+            <a
+              href="https://0xPrivacy.online"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-foreground transition-colors"
+            >
+              0xPrivacy.online
+            </a>{" "}
+            — 0xNostrRelays. Built for the Nostr community.
+          </p>
           <div className="flex items-center gap-4">
             <a
               href="https://nostr.com"

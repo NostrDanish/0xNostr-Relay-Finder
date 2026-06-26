@@ -6,6 +6,8 @@ import {
   APP_RELAY_URLS,
   KIND_RELAY_SUBMISSION,
   RELAY_SUBMISSION_D_PREFIX,
+  APPROVAL_D_PREFIX,
+  corsProxy,
 } from '@/lib/constants';
 import { RELAY_SEED_DATA } from '@/data/relays';
 
@@ -22,9 +24,86 @@ interface SubmissionPayload {
   version?: string;
 }
 
+// ─── Relay probing ─────────────────────────────────────────────────────────
+
+/**
+ * Probes a relay to determine if it's online.
+ * Strategy:
+ *   1. Try NIP-11 HTTP fetch first (fast, avoids WebSocket CORS issues)
+ *   2. Fall back to WebSocket open probe with timeout
+ * Returns true if the relay responds, false otherwise.
+ */
+async function probeRelay(url: string, timeoutMs = 12000): Promise<boolean> {
+  // Stage 1: NIP-11 HTTP fetch
+  try {
+    const httpUrl = url.replace(/^wss:\/\//, 'https://').replace(/^ws:\/\//, 'http://');
+    const resp = await fetch(corsProxy(httpUrl), {
+      method: 'GET',
+      headers: { Accept: 'application/nostr+json' },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (resp.ok) return true;
+  } catch {
+    // NIP-11 fetch failed — try WebSocket
+  }
+
+  // Stage 2: WebSocket open probe
+  return new Promise<boolean>((resolve) => {
+    let settled = false;
+    const settle = (result: boolean) => {
+      if (settled) return;
+      settled = true;
+      try { ws.close(); } catch { /* noop */ }
+      resolve(result);
+    };
+
+    const timer = setTimeout(() => settle(false), timeoutMs);
+    let ws: WebSocket;
+
+    try {
+      ws = new WebSocket(url);
+      ws.onopen = () => { clearTimeout(timer); settle(true); };
+      ws.onerror = () => { clearTimeout(timer); settle(false); };
+      ws.onclose = () => { clearTimeout(timer); if (!settled) settle(false); };
+    } catch {
+      clearTimeout(timer);
+      settle(false);
+    }
+  });
+}
+
+/**
+ * Probe relays concurrently in batches.
+ * Returns a Map<url, isOnline>.
+ */
+async function probeRelaysBatch(urls: string[], batchSize = 10): Promise<Map<string, boolean>> {
+  const results = new Map<string, boolean>();
+  for (let i = 0; i < urls.length; i += batchSize) {
+    const batch = urls.slice(i, i + batchSize);
+    const batchResults = await Promise.allSettled(
+      batch.map(async (url) => {
+        const online = await probeRelay(url);
+        return { url, online };
+      })
+    );
+    for (const r of batchResults) {
+      if (r.status === 'fulfilled') {
+        results.set(r.value.url, r.value.online);
+      } else {
+        // If the promise itself rejected (shouldn't happen but guard)
+        results.set(batch[batchResults.indexOf(r)], false);
+      }
+    }
+  }
+  return results;
+}
+
+// ─── Event parsing ─────────────────────────────────────────────────────────
+
 /**
  * Parses a kind:30078 relay submission event into a RelayRecord.
  * Returns null if the event is malformed or missing required fields.
+ * `isOnline` is set to false initially; caller should override after probing.
  */
 function parseSubmissionEvent(event: NostrEvent): RelayRecord | null {
   try {
@@ -59,7 +138,7 @@ function parseSubmissionEvent(event: NostrEvent): RelayRecord | null {
             { name: 'Paid', price: payload.paidPriceUsd ?? 5, currency: 'USD', billing: 'monthly', features: ['Full access'] },
           ],
       isFree: payload.isFree ?? true,
-      isOnline: false, // will be checked separately
+      isOnline: false, // will be overridden by probing
       uptimePercent30d: 0,
       uptimeSpark: [],
       lastChecked: event.created_at * 1000,
@@ -81,6 +160,12 @@ function parseSubmissionEvent(event: NostrEvent): RelayRecord | null {
  * Subscribes to the 0xPrivacy relay group for kind:30078 relay submission events
  * and merges them with the seed data to form the full directory.
  *
+ * Also fetches approval events and uses them to override the status of
+ * submissions (so rejected relays are properly hidden).
+ *
+ * After parsing, newly submitted relays are probed for liveness using
+ * NIP-11 HTTP fetch and WebSocket open probes.
+ *
  * Deduplication: seed data takes precedence for known relays (matched by URL).
  * User-submitted relays are appended.
  */
@@ -91,20 +176,45 @@ export function useRelayDirectory() {
     queryKey: ['relay-directory', ...APP_RELAY_URLS],
     queryFn: async () => {
       try {
-        // Query both app relays for all submission events
+        // Query both app relays for submission AND approval events
         const relayGroup = nostr.group(APP_RELAY_URLS);
 
-        const events = await relayGroup.query([
-          {
-            kinds: [KIND_RELAY_SUBMISSION],
-            '#t': ['relay-submission'],
-            limit: 200,
-          },
+        const [submissionEvents, approvalEvents] = await Promise.all([
+          relayGroup.query([
+            {
+              kinds: [KIND_RELAY_SUBMISSION],
+              '#t': ['relay-submission'],
+              limit: 200,
+            },
+          ]),
+          relayGroup.query([
+            {
+              kinds: [KIND_RELAY_SUBMISSION],
+              '#t': ['relay-approval'],
+              limit: 200,
+            },
+          ]),
         ]);
+
+        // Build approval status map (submissionEventId → latest decision)
+        const approvalStatusMap = new Map<string, string>();
+        const approvalByRef = new Map<string, NostrEvent>();
+        for (const ev of approvalEvents) {
+          const refId = ev.tags.find(([t]) => t === 'e')?.[1];
+          if (!refId) continue;
+          const existing = approvalByRef.get(refId);
+          if (!existing || ev.created_at > existing.created_at) {
+            approvalByRef.set(refId, ev);
+          }
+        }
+        for (const [refId, ev] of approvalByRef) {
+          const status = ev.tags.find(([t]) => t === 'status')?.[1];
+          if (status) approvalStatusMap.set(refId, status);
+        }
 
         // Deduplicate: keep only the latest event per d-tag
         const latestByDTag = new Map<string, NostrEvent>();
-        for (const ev of events) {
+        for (const ev of submissionEvents) {
           const dTag = ev.tags.find(([t]) => t === 'd')?.[1];
           if (!dTag) continue;
           const existing = latestByDTag.get(dTag);
@@ -113,17 +223,41 @@ export function useRelayDirectory() {
           }
         }
 
-        // Parse valid events into relay records
+        // Parse valid events into relay records, applying approval overrides
         const submittedRecords: RelayRecord[] = [];
         const seenUrls = new Set(RELAY_SEED_DATA.map((r) => r.url));
 
         for (const ev of latestByDTag.values()) {
+          // Check if there's an approval override that rejects this submission
+          const overrideStatus = approvalStatusMap.get(ev.id);
+          if (overrideStatus === 'rejected') continue;
+
           const record = parseSubmissionEvent(ev);
           if (!record) continue;
           // Skip if already in seed data
           if (seenUrls.has(record.url)) continue;
           seenUrls.add(record.url);
+
+          // Apply approval status override
+          if (overrideStatus === 'approved') {
+            record.trustScore = 50;
+          }
+
           submittedRecords.push(record);
+        }
+
+        // Probe all submitted relays for online status
+        if (submittedRecords.length > 0) {
+          const urls = submittedRecords.map((r) => r.url);
+          const probeResults = await probeRelaysBatch(urls);
+
+          for (const record of submittedRecords) {
+            const online = probeResults.get(record.url);
+            if (online !== undefined) {
+              record.isOnline = online;
+              record.lastChecked = Date.now();
+            }
+          }
         }
 
         return submittedRecords;

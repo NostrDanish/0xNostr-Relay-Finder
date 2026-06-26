@@ -98,9 +98,39 @@ function parseReport(ev: NostrEvent): Report | null {
   }
 }
 
+// ─── Approval status merge ─────────────────────────────────────────────────
+/**
+ * Builds a map of submissionEventId → latest approval decision.
+ * Approval events have d-tag "0xapproval:<submissionEventId>" and an "e" tag
+ * referencing the original submission. We take the latest one per submission.
+ */
+function buildApprovalMap(approvalEvents: NostrEvent[]): Map<string, SubmissionStatus> {
+  // Group by referenced submission event id, keep latest
+  const latestByRef = new Map<string, NostrEvent>();
+
+  for (const ev of approvalEvents) {
+    const refId = ev.tags.find(([t]) => t === 'e')?.[1];
+    if (!refId) continue;
+    const existing = latestByRef.get(refId);
+    if (!existing || ev.created_at > existing.created_at) {
+      latestByRef.set(refId, ev);
+    }
+  }
+
+  const statusMap = new Map<string, SubmissionStatus>();
+  for (const [refId, ev] of latestByRef) {
+    const status = ev.tags.find(([t]) => t === 'status')?.[1];
+    if (status === 'approved' || status === 'rejected') {
+      statusMap.set(refId, status);
+    }
+  }
+
+  return statusMap;
+}
+
 // ─── Hooks ─────────────────────────────────────────────────────────────────
 
-/** Query ALL submissions from the app relay group */
+/** Query ALL submissions from the app relay group, merging approval decisions */
 export function useSubmissions(filter?: { status?: SubmissionStatus; limit?: number }) {
   const { nostr } = useNostr();
 
@@ -108,17 +138,31 @@ export function useSubmissions(filter?: { status?: SubmissionStatus; limit?: num
     queryKey: ['submissions', ...APP_RELAY_URLS, filter?.status],
     queryFn: async () => {
       const relayGroup = nostr.group(APP_RELAY_URLS);
-      const events = await relayGroup.query([
-        {
-          kinds: [KIND_RELAY_SUBMISSION],
-          '#t': ['relay-submission'],
-          limit: filter?.limit ?? 200,
-        },
+
+      // Fetch both submissions and approval events in parallel
+      const [submissionEvents, approvalEvents] = await Promise.all([
+        relayGroup.query([
+          {
+            kinds: [KIND_RELAY_SUBMISSION],
+            '#t': ['relay-submission'],
+            limit: filter?.limit ?? 200,
+          },
+        ]),
+        relayGroup.query([
+          {
+            kinds: [KIND_RELAY_SUBMISSION],
+            '#t': ['relay-approval'],
+            limit: 200,
+          },
+        ]),
       ]);
 
-      // Deduplicate by URL (latest wins)
+      // Build the approval status override map
+      const approvalStatusMap = buildApprovalMap(approvalEvents);
+
+      // Deduplicate submissions by URL (latest wins)
       const latestByUrl = new Map<string, NostrEvent>();
-      for (const ev of events) {
+      for (const ev of submissionEvents) {
         const url = ev.tags.find(([t]) => t === 'r')?.[1];
         if (!url) continue;
         const existing = latestByUrl.get(url);
@@ -129,7 +173,15 @@ export function useSubmissions(filter?: { status?: SubmissionStatus; limit?: num
 
       const parsed = Array.from(latestByUrl.values())
         .map(parseSubmission)
-        .filter((s): s is Submission => s !== null);
+        .filter((s): s is Submission => s !== null)
+        .map((sub) => {
+          // Override status with latest approval decision if one exists
+          const overrideStatus = approvalStatusMap.get(sub.eventId);
+          if (overrideStatus) {
+            return { ...sub, status: overrideStatus };
+          }
+          return sub;
+        });
 
       if (filter?.status) return parsed.filter((s) => s.status === filter.status);
       return parsed;
@@ -187,16 +239,15 @@ export function useDashboardStats() {
 /**
  * Publishes a kind:30078 approval/rejection event.
  * d-tag = "0xapproval:<submission_event_id>"
- * This updates the submission status on the relay.
  *
- * We re-publish the full submission event with updated status tag.
- * Addressable events replace by (kind, pubkey, d-tag) so the moderator
- * replaces the submission's status in the relay's index.
- *
- * Note: To keep the original submitter's event intact, we publish a
- * SEPARATE approval decision event signed by the mod:
+ * We publish a SEPARATE approval decision event signed by the mod:
  *   kind:30078, d="0xapproval:<submission_event_id>", status=approved|rejected
- * The directory hook merges these to determine final status.
+ *
+ * The useSubmissions hook fetches both submissions and approvals,
+ * and merges the latest decision into each submission's status.
+ *
+ * onSuccess performs an optimistic cache update so the dashboard
+ * reflects the decision instantly without waiting for a relay round-trip.
  */
 export function useApproveSubmission() {
   const { nostr } = useNostr();
@@ -236,9 +287,24 @@ export function useApproveSubmission() {
 
       const relayGroup = nostr.group(APP_RELAY_URLS);
       await relayGroup.event(event);
-      return event;
+      return { event, submission, decision };
     },
-    onSuccess: () => {
+    onSuccess: ({ submission, decision }) => {
+      // Optimistic cache update: immediately update the submission status
+      // across all matching query caches so the UI reflects the decision instantly
+      qc.setQueriesData<Submission[]>(
+        { queryKey: ['submissions'] },
+        (old) => {
+          if (!old) return old;
+          return old.map((s) =>
+            s.eventId === submission.eventId
+              ? { ...s, status: decision as SubmissionStatus }
+              : s
+          );
+        },
+      );
+
+      // Also invalidate to ensure eventual consistency with the relay
       qc.invalidateQueries({ queryKey: ['submissions'] });
       qc.invalidateQueries({ queryKey: ['relay-directory'] });
     },
