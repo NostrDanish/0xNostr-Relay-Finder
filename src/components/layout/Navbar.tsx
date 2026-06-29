@@ -210,43 +210,38 @@ export function Navbar() {
   ];
 
   return (
-    <header className="sticky top-0 z-50 w-full">
-      {/* 0xPrivacy ecosystem bar */}
-      <div className="hidden md:block bg-gradient-to-r from-primary/5 via-violet-500/5 to-primary/5 border-b border-border/30">
-        <div className="container mx-auto max-w-7xl px-4 py-1 flex items-center justify-center gap-2 text-xs text-muted-foreground">
-          <Shield className="w-3 h-3 text-primary/70" />
-          <span>
-            Part of the{" "}
-            <a
-              href="https://0xPrivacy.online"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-semibold text-primary hover:underline"
-            >
-              0xPrivacy.online
-            </a>{" "}
-            ecosystem
-          </span>
-          <span className="text-border/80">|</span>
-          <span className="text-muted-foreground/60">Privacy-first tools for the decentralized web</span>
-        </div>
-      </div>
-      <div className="glass border-b border-border/50">
+    <header className="sticky top-0 z-50 w-full glass border-b border-border/50">
       <div className="container mx-auto max-w-7xl px-4">
         <div className="flex h-16 items-center justify-between gap-4">
-          {/* Logo */}
-          <Link to="/" className="flex items-center gap-2 flex-shrink-0 group">
-            <div className="relative">
-              <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center group-hover:bg-primary/30 transition-colors">
-                <Radio className="w-4 h-4 text-primary" />
+          {/* Logo with 0xPrivacy breadcrumb */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <a href="https://0xPrivacy.online" target="_blank" rel="noopener noreferrer" className="group">
+              <div className="relative">
+                <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center group-hover:bg-primary/30 transition-colors">
+                  <Radio className="w-4 h-4 text-primary" />
+                </div>
+                <div className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               </div>
-              <div className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            </div>
-            <span className="font-bold text-lg tracking-tight hidden sm:block">
-              <span className="gradient-text">0x</span>
-              <span className="text-foreground">NostrRelays</span>
+            </a>
+            <Link to="/" className="flex items-center gap-0 group">
+              <span className="font-bold text-lg tracking-tight hidden sm:block">
+                <span className="gradient-text">0x</span>
+                <span className="text-foreground">NostrRelays</span>
+              </span>
+            </Link>
+            {/* Subtle desktop breadcrumb */}
+            <span className="hidden md:inline-flex items-center gap-1 text-xs text-muted-foreground/50">
+              /
+              <a
+                href="https://0xPrivacy.online"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-primary transition-colors"
+              >
+                0xPrivacy
+              </a>
             </span>
-          </Link>
+          </div>
 
           {/* Desktop Nav */}
           <nav className="hidden md:flex items-center gap-1">
@@ -381,6 +376,19 @@ export function Navbar() {
               </Link>
             ))}
 
+            {/* 0xPrivacy link in mobile menu */}
+            <a
+              href="https://0xPrivacy.online"
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => setMenuOpen(false)}
+              className="px-3 py-2 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors flex items-center gap-2"
+            >
+              <Shield className="w-3.5 h-3.5" />
+              0xPrivacy.online
+              <ExternalLink className="w-3 h-3 ml-auto opacity-50" />
+            </a>
+
             {/* Mobile login/logout */}
             <div className="pt-2 mt-1 border-t border-border/40">
               {user ? (
@@ -406,7 +414,6 @@ export function Navbar() {
           </div>
         </div>
       )}
-      </div>
     </header>
   );
 }

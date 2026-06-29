@@ -1,76 +1,14 @@
-import { useState } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useSeoMeta } from '@unhead/react';
-import { Copy, Check, Code2, Zap, Globe2, Shield, ExternalLink, ChevronRight, Play } from 'lucide-react';
+import { Copy, Check, Code2, Zap, Globe2, Shield, Radio, Play, Square, Terminal, ExternalLink, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
-import { RELAY_SEED_DATA } from '@/data/relays';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { APP_RELAY_PRIMARY, APP_RELAY_SECONDARY, APP_RELAY_URLS, KIND_RELAY_SUBMISSION, RELAY_SUBMISSION_D_PREFIX } from '@/lib/constants';
 import { cn } from '@/lib/utils';
-
-// Simulate an API response using seed data
-function buildApiResponse(params: {
-  limit?: number;
-  uptime_gte?: number;
-  blossom?: boolean;
-  pricing?: string;
-  best_for?: string;
-  country?: string;
-}) {
-  let results = [...RELAY_SEED_DATA];
-
-  if (params.uptime_gte != null)
-    results = results.filter((r) => r.uptimePercent30d >= params.uptime_gte!);
-  if (params.blossom === true)
-    results = results.filter((r) => r.blossomSupported);
-  if (params.pricing === 'free')
-    results = results.filter((r) => r.isFree);
-  if (params.pricing === 'paid')
-    results = results.filter((r) => !r.isFree);
-  if (params.country)
-    results = results.filter((r) => r.countryCode?.toLowerCase() === params.country!.toLowerCase());
-  if (params.best_for) {
-    const bf = params.best_for.toLowerCase();
-    results = results.filter((r) =>
-      r.communityTags?.some((t) => t.tag.toLowerCase().includes(bf))
-    );
-  }
-
-  const limit = params.limit ?? 10;
-  results = results.slice(0, limit);
-
-  return {
-    ok: true,
-    count: results.length,
-    data: results.map((r) => ({
-      url: r.url,
-      name: r.name,
-      description: r.description,
-      is_online: r.isOnline,
-      uptime_30d: r.uptimePercent30d,
-      latency_ms: r.avgLatencyMs,
-      is_free: r.isFree,
-      country_code: r.countryCode,
-      trust_score: r.trustScore,
-      blossom_supported: r.blossomSupported ?? false,
-      nip66_enriched: r.nip66?.enriched ?? false,
-      supported_nips: r.nip11.supported_nips ?? [],
-      use_cases: r.useCases,
-      community_top_tag: r.communityTags?.[0]?.tag ?? null,
-      payment_url: r.paymentUrl ?? null,
-      relay_tools_url: r.relayToolsUrl ?? null,
-      last_checked: new Date(r.lastChecked).toISOString(),
-    })),
-    meta: {
-      source: '0xNostrRelays API',
-      version: '1.0',
-      cached_at: new Date().toISOString(),
-      rate_limit: '100 req/min per IP',
-      docs: 'https://0xnostrrelays.xyz/api',
-    },
-  };
-}
 
 // ─── Code snippet component ──────────────────────────────────────────────────
 function CodeBlock({ code, language = 'json' }: { code: string; language?: string }) {
@@ -102,242 +40,346 @@ function CodeBlock({ code, language = 'json' }: { code: string; language?: strin
   );
 }
 
-// ─── Interactive Try-it box ──────────────────────────────────────────────────
-function TryItBox() {
-  const [params, setParams] = useState({
-    limit: 5,
-    uptime_gte: 98,
-    blossom: false,
-    pricing: 'any',
-    best_for: '',
-    country: '',
-  });
-  const [response, setResponse] = useState<string | null>(null);
+// ─── Live WebSocket Try-It Box ───────────────────────────────────────────────
+function LiveTryItBox() {
+  const [relayUrl, setRelayUrl] = useState(APP_RELAY_PRIMARY);
+  const [filter, setFilter] = useState(JSON.stringify(
+    { kinds: [KIND_RELAY_SUBMISSION], '#t': ['relay-submission'], limit: 5 },
+    null, 2
+  ));
+  const [results, setResults] = useState<string[]>([]);
+  const [status, setStatus] = useState<'idle' | 'connecting' | 'open' | 'error' | 'closed'>('idle');
+  const [error, setError] = useState('');
+  const wsRef = useRef<WebSocket | null>(null);
 
-  const run = () => {
-    const p = {
-      limit: params.limit,
-      uptime_gte: params.uptime_gte || undefined,
-      blossom: params.blossom || undefined,
-      pricing: params.pricing !== 'any' ? params.pricing : undefined,
-      best_for: params.best_for || undefined,
-      country: params.country || undefined,
-    };
-    const data = buildApiResponse(p);
-    setResponse(JSON.stringify(data, null, 2));
+  const run = useCallback(() => {
+    // Clean up existing connection
+    if (wsRef.current) {
+      try { wsRef.current.close(); } catch { /* noop */ }
+    }
+    setResults([]);
+    setError('');
+    setStatus('connecting');
+
+    let parsedFilter: Record<string, unknown>;
+    try {
+      parsedFilter = JSON.parse(filter);
+    } catch {
+      setError('Invalid JSON filter');
+      setStatus('error');
+      return;
+    }
+
+    try {
+      const ws = new WebSocket(relayUrl);
+      wsRef.current = ws;
+      const subId = 'tryit-' + Math.random().toString(36).slice(2, 8);
+
+      ws.onopen = () => {
+        setStatus('open');
+        const req = JSON.stringify(['REQ', subId, parsedFilter]);
+        setResults(prev => [...prev, `→ ${req}`]);
+        ws.send(req);
+      };
+
+      ws.onmessage = (e) => {
+        try {
+          const msg = JSON.parse(e.data as string) as unknown[];
+          if (msg[0] === 'EVENT' && msg[2]) {
+            const ev = msg[2] as Record<string, unknown>;
+            const summary = JSON.stringify(ev, null, 2);
+            setResults(prev => [...prev, `← EVENT ${(ev.id as string)?.slice(0, 12)}…\n${summary}`]);
+          } else if (msg[0] === 'EOSE') {
+            setResults(prev => [...prev, '← EOSE (End of stored events)']);
+            // Close after EOSE
+            ws.send(JSON.stringify(['CLOSE', subId]));
+            setTimeout(() => {
+              try { ws.close(); } catch { /* noop */ }
+              setStatus('closed');
+            }, 500);
+          } else if (msg[0] === 'NOTICE') {
+            setResults(prev => [...prev, `← NOTICE: ${msg[1]}`]);
+          } else if (msg[0] === 'OK') {
+            setResults(prev => [...prev, `← OK: ${JSON.stringify(msg.slice(1))}`]);
+          } else {
+            setResults(prev => [...prev, `← ${JSON.stringify(msg)}`]);
+          }
+        } catch {
+          setResults(prev => [...prev, `← ${e.data}`]);
+        }
+      };
+
+      ws.onerror = () => {
+        setError('WebSocket connection failed. The relay may be down or unreachable.');
+        setStatus('error');
+      };
+
+      ws.onclose = () => {
+        if (status !== 'error') setStatus('closed');
+      };
+
+      // Timeout after 15 seconds
+      setTimeout(() => {
+        if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+          try {
+            ws.send(JSON.stringify(['CLOSE', subId]));
+            ws.close();
+          } catch { /* noop */ }
+          setStatus('closed');
+          setResults(prev => [...prev, '⚠ Connection timed out after 15s']);
+        }
+      }, 15000);
+    } catch (err) {
+      setError(`Failed to connect: ${err}`);
+      setStatus('error');
+    }
+  }, [relayUrl, filter, status]);
+
+  const stop = useCallback(() => {
+    if (wsRef.current) {
+      try { wsRef.current.close(); } catch { /* noop */ }
+    }
+    setStatus('closed');
+  }, []);
+
+  const statusColors: Record<string, string> = {
+    idle: 'bg-muted text-muted-foreground',
+    connecting: 'bg-yellow-500/15 text-yellow-500',
+    open: 'bg-emerald-500/15 text-emerald-500',
+    error: 'bg-red-500/15 text-red-500',
+    closed: 'bg-muted text-muted-foreground',
   };
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        {[
-          { label: 'limit', type: 'number', key: 'limit', min: 1, max: 100 },
-          { label: 'uptime_gte (%)', type: 'number', key: 'uptime_gte', min: 0, max: 100 },
-          { label: 'country (e.g. US, DE)', type: 'text', key: 'country' },
-          { label: 'best_for (e.g. images)', type: 'text', key: 'best_for' },
-        ].map((f) => (
-          <div key={f.key} className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">{f.label}</label>
-            <input
-              type={f.type}
-              value={(params as Record<string, unknown>)[f.key] as string | number}
-              onChange={(e) => setParams({ ...params, [f.key]: f.type === 'number' ? Number(e.target.value) : e.target.value })}
-              min={(f as { min?: number }).min}
-              max={(f as { max?: number }).max}
-              className="w-full h-8 px-2 rounded-md border border-border bg-background text-sm font-mono"
-            />
-          </div>
-        ))}
-
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-muted-foreground">pricing</label>
-          <select
-            value={params.pricing}
-            onChange={(e) => setParams({ ...params, pricing: e.target.value })}
-            className="w-full h-8 px-2 rounded-md border border-border bg-background text-sm"
-          >
-            <option value="any">any</option>
-            <option value="free">free</option>
-            <option value="paid">paid</option>
-          </select>
+      {/* Relay picker */}
+      <div className="space-y-2">
+        <label className="text-xs font-medium text-muted-foreground">Relay URL</label>
+        <div className="flex gap-2 flex-wrap">
+          {[APP_RELAY_PRIMARY, APP_RELAY_SECONDARY, 'wss://relay.damus.io', 'wss://nos.lol'].map((url) => (
+            <button
+              key={url}
+              onClick={() => setRelayUrl(url)}
+              className={cn(
+                'text-xs px-2.5 py-1.5 rounded-lg border font-mono transition-all',
+                relayUrl === url
+                  ? 'bg-primary/10 text-primary border-primary/30'
+                  : 'border-border text-muted-foreground hover:border-primary/30'
+              )}
+            >
+              {url.replace('wss://', '')}
+            </button>
+          ))}
         </div>
+      </div>
 
-        <div className="space-y-1 flex flex-col justify-end">
-          <label className="text-xs font-medium text-muted-foreground">blossom=true</label>
+      {/* Filter editor */}
+      <div className="space-y-2">
+        <label className="text-xs font-medium text-muted-foreground">REQ Filter (JSON)</label>
+        <textarea
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          rows={5}
+          className="w-full rounded-xl bg-[hsl(240_12%_6%)] border border-border/40 p-3 text-xs font-mono text-slate-300 resize-none focus:outline-none focus:ring-1 focus:ring-primary/50"
+        />
+        <div className="flex flex-wrap gap-2">
           <button
-            onClick={() => setParams({ ...params, blossom: !params.blossom })}
-            className={cn(
-              'h-8 w-full rounded-md border text-xs font-medium transition-all',
-              params.blossom
-                ? 'bg-primary text-primary-foreground border-primary'
-                : 'border-border text-muted-foreground hover:border-primary/50'
-            )}
+            onClick={() => setFilter(JSON.stringify({ kinds: [KIND_RELAY_SUBMISSION], '#t': ['relay-submission'], limit: 5 }, null, 2))}
+            className="text-xs px-2 py-1 rounded border border-border text-muted-foreground hover:text-foreground hover:border-primary/30 transition-colors"
           >
-            {params.blossom ? '✓ blossom=true' : 'blossom'}
+            Submissions
+          </button>
+          <button
+            onClick={() => setFilter(JSON.stringify({ kinds: [KIND_RELAY_SUBMISSION], '#t': ['relay-approval'], limit: 5 }, null, 2))}
+            className="text-xs px-2 py-1 rounded border border-border text-muted-foreground hover:text-foreground hover:border-primary/30 transition-colors"
+          >
+            Approvals
+          </button>
+          <button
+            onClick={() => setFilter(JSON.stringify({ kinds: [30166], limit: 3 }, null, 2))}
+            className="text-xs px-2 py-1 rounded border border-border text-muted-foreground hover:text-foreground hover:border-primary/30 transition-colors"
+          >
+            NIP-66 Monitor
+          </button>
+          <button
+            onClick={() => setFilter(JSON.stringify({ kinds: [0], limit: 1 }, null, 2))}
+            className="text-xs px-2 py-1 rounded border border-border text-muted-foreground hover:text-foreground hover:border-primary/30 transition-colors"
+          >
+            Profile (kind:0)
           </button>
         </div>
       </div>
 
-      <Button onClick={run} size="sm" className="gap-2">
-        <Play className="w-3.5 h-3.5" />
-        Run Query
-      </Button>
+      {/* Controls */}
+      <div className="flex items-center gap-3">
+        <Button
+          onClick={run}
+          size="sm"
+          className="gap-2"
+          disabled={status === 'connecting' || status === 'open'}
+        >
+          <Play className="w-3.5 h-3.5" />
+          Send REQ
+        </Button>
+        {(status === 'connecting' || status === 'open') && (
+          <Button onClick={stop} size="sm" variant="outline" className="gap-2">
+            <Square className="w-3 h-3" />
+            Stop
+          </Button>
+        )}
+        <span className={cn('text-xs px-2 py-0.5 rounded-full font-medium', statusColors[status])}>
+          {status}
+        </span>
+      </div>
 
-      {response && (
+      {error && (
+        <p className="text-xs text-red-500 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{error}</p>
+      )}
+
+      {/* Results */}
+      {results.length > 0 && (
         <div className="space-y-1">
-          <div className="text-xs text-muted-foreground">Response (simulated — live when deployed)</div>
-          <CodeBlock code={response} language="json" />
+          <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+            <Terminal className="w-3 h-3" />
+            WebSocket Messages ({results.length})
+          </div>
+          <div className="rounded-xl bg-[hsl(240_12%_6%)] border border-border/40 p-3 max-h-96 overflow-y-auto space-y-2">
+            {results.map((msg, i) => (
+              <pre key={i} className={cn(
+                'text-xs font-mono whitespace-pre-wrap break-all',
+                msg.startsWith('→') ? 'text-blue-400' :
+                msg.startsWith('←') ? 'text-emerald-400' :
+                msg.startsWith('⚠') ? 'text-yellow-400' :
+                'text-slate-400'
+              )}>
+                {msg}
+              </pre>
+            ))}
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-// ─── Endpoint card ───────────────────────────────────────────────────────────
-function EndpointCard({
-  method, path, description, params, response,
-}: {
-  method: 'GET' | 'POST';
-  path: string;
-  description: string;
-  params?: { name: string; type: string; desc: string; required?: boolean }[];
-  response?: string;
-}) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <Card className={cn('border-border/60 overflow-hidden', open && 'border-primary/30')}>
-      <button
-        className="w-full text-left"
-        onClick={() => setOpen(!open)}
-      >
-        <CardHeader className="pb-3 pt-3 px-4">
-          <div className="flex items-center gap-3">
-            <span className={cn(
-              'text-xs font-bold px-2 py-0.5 rounded border',
-              method === 'GET'
-                ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30'
-                : 'bg-blue-500/10 text-blue-500 border-blue-500/30'
-            )}>
-              {method}
-            </span>
-            <code className="text-sm font-mono font-semibold text-foreground">{path}</code>
-            <ChevronRight className={cn('w-4 h-4 text-muted-foreground ml-auto transition-transform', open && 'rotate-90')} />
-          </div>
-          <p className="text-xs text-muted-foreground mt-1 pl-0">{description}</p>
-        </CardHeader>
-      </button>
-
-      {open && (
-        <CardContent className="px-4 pb-4 pt-0 space-y-4 border-t border-border/40">
-          {params && params.length > 0 && (
-            <div>
-              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Query Parameters</div>
-              <div className="space-y-2">
-                {params.map((p) => (
-                  <div key={p.name} className="flex items-start gap-3 text-sm">
-                    <code className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded text-primary flex-shrink-0">{p.name}</code>
-                    <span className="text-xs text-muted-foreground flex-shrink-0">{p.type}</span>
-                    <span className="text-xs text-muted-foreground">{p.desc}</span>
-                    {p.required && <Badge variant="outline" className="text-xs ml-auto flex-shrink-0 h-4">required</Badge>}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          {response && (
-            <div>
-              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Example Response</div>
-              <CodeBlock code={response} language="json" />
-            </div>
-          )}
-        </CardContent>
-      )}
-    </Card>
-  );
-}
-
 // ─── Main page ───────────────────────────────────────────────────────────────
 export function ApiDocsPage() {
   useSeoMeta({
-    title: 'Public API — 0xNostrRelays',
-    description: 'Free REST API for Nostr clients. Query relays by uptime, pricing, NIP support, Blossom, country, and community votes.',
+    title: 'Query via Nostr Protocol — 0xNostrRelays',
+    description: 'Query the 0xNostrRelays directory directly via the Nostr protocol. Connect to our relays over WebSocket and fetch relay submission events. No REST API — pure decentralised Nostr.',
   });
 
-  const exampleListResponse = JSON.stringify(
-    buildApiResponse({ limit: 2, uptime_gte: 99 }),
-    null, 2
-  );
+  const wsReqExample = `// Connect to our relay via WebSocket
+const ws = new WebSocket('${APP_RELAY_PRIMARY}');
 
-  const exampleSingleResponse = JSON.stringify({
-    ok: true,
-    data: {
-      url: 'wss://relay.damus.io',
-      name: 'Damus Relay',
-      uptime_30d: 99.7,
-      latency_ms: 45,
-      is_free: true,
-      trust_score: 98,
-      nip66_enriched: true,
-      blossom_supported: false,
-      community_top_tag: 'Best for General Chat',
-    },
-    meta: { source: '0xNostrRelays API', version: '1.0' },
-  }, null, 2);
-
-  const curlExample = `curl -X GET \\
-  "https://api.0xnostrrelays.xyz/api/relays?uptime_gte=99&blossom=true&limit=10" \\
-  -H "Accept: application/json"`;
-
-  const jsExample = `// JavaScript / TypeScript
-const res = await fetch(
-  'https://api.0xnostrrelays.xyz/api/relays?' +
-  new URLSearchParams({
-    uptime_gte: '99',
-    pricing: 'free',
-    best_for: 'blossom',
-    limit: '10',
-    sort: 'latency',
-  })
-);
-const { data } = await res.json();
-// data is RelayApiRecord[]
-console.log(data[0].url); // wss://relay.primal.net`;
-
-  const pythonExample = `# Python
-import requests
-
-resp = requests.get(
-    'https://api.0xnostrrelays.xyz/api/relays',
-    params={
-        'uptime_gte': 98,
-        'country': 'DE',
-        'best_for': 'general',
-        'limit': 20,
+ws.onopen = () => {
+  // Send a REQ to fetch approved relay submissions
+  ws.send(JSON.stringify([
+    'REQ',
+    'my-sub-id',
+    {
+      kinds: [${KIND_RELAY_SUBMISSION}],
+      '#t': ['relay-submission'],
+      limit: 50
     }
-)
-relays = resp.json()['data']
-for r in relays:
-    print(r['url'], r['uptime_30d'])`;
+  ]));
+};
 
-  const coracle = `// Coracle / NDK integration example
-import { NDK } from '@nostr-dev-kit/ndk';
+ws.onmessage = (e) => {
+  const msg = JSON.parse(e.data);
 
-// Fetch top free relays from 0xNostrRelays API
-const res = await fetch('https://api.0xnostrrelays.xyz/api/relays?pricing=free&uptime_gte=99&limit=5');
-const { data: topRelays } = await res.json();
+  if (msg[0] === 'EVENT') {
+    const event = msg[2];
+    const payload = JSON.parse(event.content);
+    console.log(payload.url, payload.name);
+    // → wss://relay.damus.io, Damus Relay
+  }
+
+  if (msg[0] === 'EOSE') {
+    // End of stored events — all results received
+    ws.send(JSON.stringify(['CLOSE', 'my-sub-id']));
+  }
+};`;
+
+  const nostrifyExample = `import { useNostr } from '@nostrify/react';
+
+function useRelaySubmissions() {
+  const { nostr } = useNostr();
+
+  // Connect to the 0xPrivacy relay group
+  const relayGroup = nostr.group([
+    '${APP_RELAY_PRIMARY}',
+    '${APP_RELAY_SECONDARY}',
+  ]);
+
+  // Fetch relay submissions
+  const events = await relayGroup.query([{
+    kinds: [${KIND_RELAY_SUBMISSION}],
+    '#t': ['relay-submission'],
+    limit: 50,
+  }]);
+
+  // Parse each event's content
+  return events.map(ev => ({
+    ...JSON.parse(ev.content),
+    status: ev.tags.find(([t]) => t === 'status')?.[1],
+    eventId: ev.id,
+    pubkey: ev.pubkey,
+  }));
+}`;
+
+  const ndkExample = `import NDK from '@nostr-dev-kit/ndk';
 
 const ndk = new NDK({
-  explicitRelayUrls: topRelays.map(r => r.url),
+  explicitRelayUrls: [
+    '${APP_RELAY_PRIMARY}',
+    '${APP_RELAY_SECONDARY}',
+  ],
 });
-await ndk.connect();`;
+await ndk.connect();
 
-  const amethyst = `// Amethyst Android — relay list import
-// Paste this URL in Amethyst → Settings → Relay Sources:
-// https://api.0xnostrrelays.xyz/api/relays?pricing=free&uptime_gte=98&format=nip65
+// Fetch relay submission events
+const events = await ndk.fetchEvents({
+  kinds: [${KIND_RELAY_SUBMISSION}],
+  '#t': ['relay-submission'],
+  limit: 50,
+});
 
-// Or use the nostr:// deep link:
-// nostr://relaylist?source=0xnostrrelays&filter=free&min_uptime=98`;
+for (const event of events) {
+  const payload = JSON.parse(event.content);
+  const status = event.tags.find(t => t[0] === 'status')?.[1];
+  console.log(payload.url, payload.name, status);
+}`;
+
+  const pythonExample = `# Python — using pynostr or websocket-client
+import json
+import websocket
+
+ws = websocket.create_connection('${APP_RELAY_PRIMARY}')
+
+# Send REQ
+ws.send(json.dumps([
+    'REQ', 'py-sub',
+    {
+        'kinds': [${KIND_RELAY_SUBMISSION}],
+        '#t': ['relay-submission'],
+        'limit': 20
+    }
+]))
+
+# Read events until EOSE
+while True:
+    msg = json.loads(ws.recv())
+    if msg[0] == 'EVENT':
+        ev = msg[2]
+        payload = json.loads(ev['content'])
+        status = next((t[1] for t in ev['tags'] if t[0] == 'status'), 'pending')
+        print(f"{payload['url']} — {payload.get('name', '?')} [{status}]")
+    elif msg[0] == 'EOSE':
+        break
+
+ws.send(json.dumps(['CLOSE', 'py-sub']))
+ws.close()`;
 
   return (
     <div className="container mx-auto max-w-5xl px-4 py-10">
@@ -345,21 +387,31 @@ await ndk.connect();`;
       <div className="mb-10">
         <div className="inline-flex items-center gap-2 bg-primary/10 border border-primary/20 rounded-full px-4 py-1.5 text-sm text-primary font-medium mb-4">
           <Code2 className="w-3.5 h-3.5" />
-          Developer API
+          Nostr-Native Protocol
         </div>
         <h1 className="text-4xl font-black mb-3">
-          Free Public API for Nostr Clients
+          Query via Nostr Protocol
         </h1>
         <p className="text-muted-foreground text-lg max-w-2xl leading-relaxed mb-4">
-          Query the most comprehensive Nostr relay directory programmatically.
-          Filter by uptime, pricing, NIP support, Blossom, country, and community votes.
-          <strong className="text-foreground"> Free forever, no API key required.</strong>
+          0xNostrRelays stores all data as cryptographically signed Nostr events.
+          There is no REST API — you connect directly to our relays over WebSocket
+          and query events using the standard{' '}
+          <a
+            href="https://github.com/nostr-protocol/nips/blob/master/01.md"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary hover:underline font-medium"
+          >
+            NIP-01
+          </a>{' '}
+          protocol.{' '}
+          <strong className="text-foreground">Fully decentralised. No API keys. No rate limits.</strong>
         </p>
         <div className="flex flex-wrap gap-3">
           {[
-            { icon: Zap, label: '100 req/min', desc: 'Rate limit per IP' },
-            { icon: Globe2, label: 'CORS enabled', desc: 'Use from any browser' },
-            { icon: Shield, label: 'No auth needed', desc: 'Free forever' },
+            { icon: Zap, label: 'No rate limits', desc: 'Nostr protocol — unlimited' },
+            { icon: Globe2, label: 'Decentralised', desc: 'Data on 7+ relays' },
+            { icon: Shield, label: 'No auth needed', desc: 'Public events for all' },
           ].map((s) => {
             const Icon = s.icon;
             return (
@@ -375,151 +427,134 @@ await ndk.connect();`;
         </div>
       </div>
 
-      {/* Base URL */}
-      <Card className="border-border/60 mb-8 bg-[hsl(240_12%_8%)]">
-        <CardContent className="pt-4 pb-4">
-          <div className="flex items-center justify-between gap-4 flex-wrap">
-            <div>
-              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Base URL</div>
-              <code className="text-base font-mono text-primary">https://api.0xnostrrelays.xyz</code>
+      {/* Relay URLs */}
+      <Card className="border-border/60 mb-8">
+        <CardContent className="pt-5 pb-5">
+          <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Our Relay URLs</div>
+          <div className="space-y-2">
+            <div className="flex items-center gap-3">
+              <Badge className="bg-primary/10 text-primary border-primary/20 text-xs">Primary</Badge>
+              <code className="text-sm font-mono text-primary">{APP_RELAY_PRIMARY}</code>
             </div>
-            <div>
-              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Version</div>
-              <span className="text-sm font-mono">v1.0</span>
+            <div className="flex items-center gap-3">
+              <Badge variant="secondary" className="text-xs">Secondary</Badge>
+              <code className="text-sm font-mono">{APP_RELAY_SECONDARY}</code>
             </div>
-            <div>
-              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Format</div>
-              <span className="text-sm font-mono">JSON (application/json)</span>
-            </div>
+          </div>
+          <div className="mt-3 text-xs text-muted-foreground">
+            Events are also mirrored to:{' '}
+            {APP_RELAY_URLS.slice(2).map((url, i) => (
+              <span key={url}>
+                <code className="bg-muted px-1 rounded">{url.replace('wss://', '')}</code>
+                {i < APP_RELAY_URLS.length - 3 && ', '}
+              </span>
+            ))}
           </div>
         </CardContent>
       </Card>
 
-      <Tabs defaultValue="endpoints" className="space-y-6">
-        <TabsList className="bg-muted/50">
-          <TabsTrigger value="endpoints">Endpoints</TabsTrigger>
+      <Tabs defaultValue="protocol" className="space-y-6">
+        <TabsList className="bg-muted/50 flex-wrap h-auto gap-1">
+          <TabsTrigger value="protocol">Protocol</TabsTrigger>
           <TabsTrigger value="try">Try It Live</TabsTrigger>
-          <TabsTrigger value="examples">Client Examples</TabsTrigger>
-          <TabsTrigger value="schema">Data Schema</TabsTrigger>
-          <TabsTrigger value="ratelimit">Rate Limits</TabsTrigger>
+          <TabsTrigger value="examples">Code Examples</TabsTrigger>
+          <TabsTrigger value="schema">Event Schema</TabsTrigger>
+          <TabsTrigger value="filters">Filter Reference</TabsTrigger>
         </TabsList>
 
-        {/* ─── Endpoints ──────────────────────────────────────────────────────── */}
-        <TabsContent value="endpoints" className="space-y-3">
-          <EndpointCard
-            method="GET"
-            path="/api/relays"
-            description="List relays with optional filtering, sorting, and pagination. Returns rich JSON with NIP-11 data, community votes, NIP-66 health, and geo info."
-            params={[
-              { name: 'limit', type: 'integer', desc: 'Max results to return (default: 50, max: 200)' },
-              { name: 'offset', type: 'integer', desc: 'Pagination offset (default: 0)' },
-              { name: 'uptime_gte', type: 'float', desc: 'Minimum 30d uptime percentage (e.g. 99)' },
-              { name: 'pricing', type: 'enum', desc: 'free | paid | any (default: any)' },
-              { name: 'blossom', type: 'boolean', desc: 'true = only Blossom-enabled relays' },
-              { name: 'country', type: 'string', desc: 'ISO 3166-1 alpha-2 country code (e.g. DE, US)' },
-              { name: 'nips', type: 'string', desc: 'Comma-separated NIP numbers (e.g. 1,9,17)' },
-              { name: 'best_for', type: 'string', desc: 'Community voted tag (e.g. images, blossom, dms)' },
-              { name: 'sort', type: 'enum', desc: 'uptime | latency | trust_score | newest (default: uptime)' },
-              { name: 'online_only', type: 'boolean', desc: 'true = only currently online relays' },
-              { name: 'nip66', type: 'boolean', desc: 'true = only NIP-66 enriched relays' },
-              { name: 'format', type: 'enum', desc: 'json | nip65 — nip65 returns a kind:10002 event body' },
-              { name: 'policy', type: 'enum', desc: 'public | auth | pow — filter by write policy' },
-            ]}
-            response={exampleListResponse}
-          />
+        {/* ─── Protocol ──────────────────────────────────────────────────────── */}
+        <TabsContent value="protocol" className="space-y-6">
+          <Alert>
+            <Radio className="w-4 h-4" />
+            <AlertTitle>How It Works</AlertTitle>
+            <AlertDescription className="text-sm">
+              All relay directory data is stored as{' '}
+              <code className="bg-muted px-1 rounded text-xs">kind:{KIND_RELAY_SUBMISSION}</code>{' '}
+              (NIP-78) addressable events on our Nostr relays.
+              You query them using the standard NIP-01 WebSocket protocol — the same way any Nostr client fetches events.
+            </AlertDescription>
+          </Alert>
 
-          <EndpointCard
-            method="GET"
-            path="/api/relays/:url"
-            description="Get full details for a single relay by its WSS URL. URL-encode the relay URL (e.g. wss%3A%2F%2Frelay.damus.io). Returns NIP-11, NIP-66, community votes, uptime history, pricing."
-            params={[
-              { name: 'url', type: 'string', desc: 'URL-encoded WSS relay URL (path param)', required: true },
-            ]}
-            response={exampleSingleResponse}
-          />
+          <div className="space-y-4">
+            <h3 className="font-bold text-lg">1. Connect via WebSocket</h3>
+            <CodeBlock code={`const ws = new WebSocket('${APP_RELAY_PRIMARY}');`} language="javascript" />
 
-          <EndpointCard
-            method="GET"
-            path="/api/relays/search"
-            description="Full-text search across relay names, descriptions, URLs, and use-case tags."
-            params={[
-              { name: 'q', type: 'string', desc: 'Search query string', required: true },
-              { name: 'limit', type: 'integer', desc: 'Max results (default: 20)' },
-            ]}
-          />
+            <h3 className="font-bold text-lg">2. Send a REQ filter</h3>
+            <CodeBlock code={`ws.send(JSON.stringify([
+  'REQ',
+  'my-subscription-id',
+  {
+    kinds: [${KIND_RELAY_SUBMISSION}],       // NIP-78 app-specific data
+    '#t': ['relay-submission'],  // filter by tag
+    limit: 50                    // max events to return
+  }
+]));`} language="javascript" />
 
-          <EndpointCard
-            method="GET"
-            path="/api/relays/nip66"
-            description="Get relays with the latest NIP-66 health data. Useful for monitoring dashboards. Sorted by monitor recency."
-            params={[
-              { name: 'status', type: 'enum', desc: 'online | offline | degraded | any (default: any)' },
-              { name: 'monitor', type: 'string', desc: 'Filter by specific monitor pubkey' },
-            ]}
-          />
+            <h3 className="font-bold text-lg">3. Receive EVENT messages</h3>
+            <CodeBlock code={`// Relay sends back matching events:
+["EVENT", "my-subscription-id", {
+  "id": "abc123...",
+  "pubkey": "d888c3...",
+  "kind": ${KIND_RELAY_SUBMISSION},
+  "created_at": 1719500000,
+  "tags": [
+    ["d", "${RELAY_SUBMISSION_D_PREFIX}wss%3A%2F%2Frelay.example.com"],
+    ["r", "wss://relay.example.com"],
+    ["t", "relay-submission"],
+    ["status", "approved"],
+    ["pricing", "free"]
+  ],
+  "content": "{\\"url\\":\\"wss://relay.example.com\\",\\"name\\":\\"Example Relay\\",\\"description\\":\\"...\\"}",
+  "sig": "..."
+}]
 
-          <EndpointCard
-            method="GET"
-            path="/api/votes/:url"
-            description="Get community vote aggregates for a relay."
-            params={[
-              { name: 'url', type: 'string', desc: 'URL-encoded WSS relay URL', required: true },
-            ]}
-          />
+// When all stored events are sent:
+["EOSE", "my-subscription-id"]`} language="json" />
 
-          <EndpointCard
-            method="GET"
-            path="/api/stats"
-            description="Global directory statistics: total relays, online count, average uptime, top countries, NIP-66 coverage, etc."
-          />
+            <h3 className="font-bold text-lg">4. Close the subscription</h3>
+            <CodeBlock code={`ws.send(JSON.stringify(['CLOSE', 'my-subscription-id']));`} language="javascript" />
+          </div>
         </TabsContent>
 
-        {/* ─── Try it ──────────────────────────────────────────────────────────── */}
+        {/* ─── Try it Live ────────────────────────────────────────────────────── */}
         <TabsContent value="try">
           <Card className="border-border/60">
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
-                <Play className="w-4 h-4 text-primary" />
-                Interactive API Explorer
+                <Terminal className="w-4 h-4 text-primary" />
+                Live WebSocket Console
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-xs text-muted-foreground mb-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg px-3 py-2">
-                ⚡ Results are simulated from local seed data. When deployed, this queries the live database.
-              </div>
-              <TryItBox />
+              <Alert className="mb-4 border-emerald-500/20 bg-emerald-500/5">
+                <Zap className="w-4 h-4 text-emerald-500" />
+                <AlertDescription className="text-xs">
+                  This connects directly to a real Nostr relay via WebSocket and sends a real <code className="bg-muted px-1 rounded">REQ</code> message. The responses are live events from the network.
+                </AlertDescription>
+              </Alert>
+              <LiveTryItBox />
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* ─── Examples ─────────────────────────────────────────────────────────── */}
+        {/* ─── Code Examples ──────────────────────────────────────────────────── */}
         <TabsContent value="examples" className="space-y-5">
           <div>
             <h3 className="font-bold mb-3 flex items-center gap-2">
-              <span className="text-xs bg-muted px-2 py-0.5 rounded font-mono">cURL</span>
-              Basic request
+              <span className="text-xs bg-yellow-500/10 text-yellow-500 border border-yellow-500/30 px-2 py-0.5 rounded font-mono">JS</span>
+              Raw WebSocket (Browser / Node.js)
             </h3>
-            <CodeBlock code={curlExample} language="bash" />
+            <CodeBlock code={wsReqExample} language="javascript" />
           </div>
 
           <Separator />
 
           <div>
             <h3 className="font-bold mb-3 flex items-center gap-2">
-              <span className="text-xs bg-yellow-500/10 text-yellow-500 border border-yellow-500/30 px-2 py-0.5 rounded font-mono">JS/TS</span>
-              JavaScript / TypeScript
+              <span className="text-xs bg-primary/10 text-primary border border-primary/30 px-2 py-0.5 rounded font-mono">Nostrify</span>
+              @nostrify/react (used by this app)
             </h3>
-            <CodeBlock code={jsExample} language="typescript" />
-          </div>
-
-          <Separator />
-
-          <div>
-            <h3 className="font-bold mb-3 flex items-center gap-2">
-              <span className="text-xs bg-blue-500/10 text-blue-500 border border-blue-500/30 px-2 py-0.5 rounded font-mono">Python</span>
-              Python
-            </h3>
-            <CodeBlock code={pythonExample} language="python" />
+            <CodeBlock code={nostrifyExample} language="typescript" />
           </div>
 
           <Separator />
@@ -527,55 +562,90 @@ await ndk.connect();`;
           <div>
             <h3 className="font-bold mb-3 flex items-center gap-2">
               <span className="text-xs bg-violet-500/10 text-violet-500 border border-violet-500/30 px-2 py-0.5 rounded font-mono">NDK</span>
-              Coracle / NDK Integration
+              @nostr-dev-kit/ndk
             </h3>
-            <CodeBlock code={coracle} language="typescript" />
+            <CodeBlock code={ndkExample} language="typescript" />
           </div>
 
           <Separator />
 
           <div>
             <h3 className="font-bold mb-3 flex items-center gap-2">
-              <span className="text-xs bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 px-2 py-0.5 rounded font-mono">Android</span>
-              Amethyst Android
+              <span className="text-xs bg-blue-500/10 text-blue-500 border border-blue-500/30 px-2 py-0.5 rounded font-mono">Python</span>
+              websocket-client
             </h3>
-            <CodeBlock code={amethyst} language="kotlin" />
+            <CodeBlock code={pythonExample} language="python" />
           </div>
         </TabsContent>
 
-        {/* ─── Schema ──────────────────────────────────────────────────────────── */}
-        <TabsContent value="schema">
+        {/* ─── Schema ─────────────────────────────────────────────────────────── */}
+        <TabsContent value="schema" className="space-y-6">
           <Card className="border-border/60">
-            <CardContent className="pt-5">
-              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">RelayApiRecord</div>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Relay Submission Event (kind:{KIND_RELAY_SUBMISSION})</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Tags</div>
+              <div className="space-y-2 mb-6">
+                {[
+                  { tag: 'd', desc: `Unique identifier: "${RELAY_SUBMISSION_D_PREFIX}<url-encoded wss URL>"` },
+                  { tag: 'r', desc: 'Relay WebSocket URL (wss://…)' },
+                  { tag: 't', desc: '"relay-submission" for submissions, "relay-approval" for mod decisions' },
+                  { tag: 'status', desc: '"pending" | "approved" | "rejected"' },
+                  { tag: 'pricing', desc: '"free" | "paid"' },
+                  { tag: 'alt', desc: 'NIP-31 human-readable description' },
+                  { tag: 'e', desc: '(Approvals only) References the original submission event ID' },
+                ].map((f) => (
+                  <div key={f.tag} className="flex items-start gap-3 py-1.5 border-b border-border/30 last:border-0">
+                    <code className="font-mono text-xs text-primary min-w-[60px] flex-shrink-0">["{f.tag}"]</code>
+                    <span className="text-xs text-muted-foreground">{f.desc}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Content (JSON)</div>
               <div className="space-y-2">
                 {[
-                  { field: 'url', type: 'string', desc: 'WebSocket URL (wss://)' },
+                  { field: 'url', type: 'string', desc: 'Relay WebSocket URL (wss://…)' },
                   { field: 'name', type: 'string', desc: 'Human-readable relay name' },
-                  { field: 'description', type: 'string', desc: 'Short relay description' },
-                  { field: 'is_online', type: 'boolean', desc: 'Current online status (checked every 4-6h)' },
-                  { field: 'uptime_30d', type: 'float', desc: '30-day uptime percentage (0-100)' },
-                  { field: 'latency_ms', type: 'integer | null', desc: 'Average round-trip latency in milliseconds' },
-                  { field: 'trust_score', type: 'integer', desc: 'Composite trust score (0-100)' },
-                  { field: 'is_free', type: 'boolean', desc: 'Whether basic write access is free' },
-                  { field: 'country_code', type: 'string | null', desc: 'ISO 3166-1 alpha-2 country code' },
-                  { field: 'blossom_supported', type: 'boolean', desc: 'Native Blossom media server support' },
-                  { field: 'nip66_enriched', type: 'boolean', desc: 'Has official NIP-66 monitor health data' },
-                  { field: 'supported_nips', type: 'integer[]', desc: 'NIP numbers supported by this relay' },
-                  { field: 'use_cases', type: 'string[]', desc: 'Editor-curated use-case categories' },
-                  { field: 'community_top_tag', type: 'string | null', desc: 'Highest-voted community tag' },
-                  { field: 'payment_url', type: 'string | null', desc: 'Subscription / payment URL for paid relays' },
-                  { field: 'relay_tools_url', type: 'string | null', desc: 'relay.tools one-click add URL' },
-                  { field: 'last_checked', type: 'ISO 8601 string', desc: 'Timestamp of last monitoring check' },
-                  { field: 'nip11', type: 'NIP11Object', desc: 'Full NIP-11 relay info document' },
-                  { field: 'nip66', type: 'NIP66Object | null', desc: 'NIP-66 health data if enriched' },
-                  { field: 'community_votes', type: 'VoteAggregate[]', desc: 'Community voted tags with percentages' },
-                  { field: 'price_tiers', type: 'PriceTier[]', desc: 'Pricing plans with features and limits' },
+                  { field: 'description', type: 'string', desc: 'Relay description' },
+                  { field: 'nip11', type: 'object', desc: 'NIP-11 relay info document snapshot' },
+                  { field: 'useCases', type: 'string[]', desc: 'Use-case tags: General, DMs, Privacy, etc.' },
+                  { field: 'isFree', type: 'boolean', desc: 'Whether basic write access is free' },
+                  { field: 'paidPriceUsd', type: 'number?', desc: 'Monthly price in USD for paid relays' },
+                  { field: 'submittedAt', type: 'number', desc: 'Unix timestamp of submission' },
+                  { field: 'submitterPubkey', type: 'string', desc: 'Hex pubkey of the submitter' },
                 ].map((f) => (
                   <div key={f.field} className="flex items-start gap-3 py-1.5 border-b border-border/30 last:border-0">
-                    <code className="font-mono text-xs text-primary min-w-[160px] flex-shrink-0">{f.field}</code>
-                    <span className="text-xs text-muted-foreground min-w-[100px] flex-shrink-0 font-mono">{f.type}</span>
+                    <code className="font-mono text-xs text-primary min-w-[140px] flex-shrink-0">{f.field}</code>
+                    <span className="text-xs text-muted-foreground min-w-[80px] flex-shrink-0 font-mono">{f.type}</span>
                     <span className="text-xs text-muted-foreground">{f.desc}</span>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-border/60">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Other Event Kinds Used</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {[
+                  { kind: '30166', nip: 'NIP-66', desc: 'Relay Discovery — live health data from trusted monitors' },
+                  { kind: '10166', nip: 'NIP-66', desc: 'Monitor Announcement — monitor metadata and check frequency' },
+                  { kind: '10002', nip: 'NIP-65', desc: 'Relay List Metadata — user\'s read/write relay configuration' },
+                  { kind: '7', nip: 'NIP-25', desc: 'Reactions — upvotes (+) and downvotes (-) on relay submissions' },
+                  { kind: '6683', nip: 'Custom', desc: 'Community relay tag proposals' },
+                  { kind: '1984', nip: 'NIP-56', desc: 'Reports — flagging relay issues' },
+                ].map((k) => (
+                  <div key={k.kind} className="flex items-start gap-3 py-2 border-b border-border/30 last:border-0">
+                    <code className="font-mono text-xs bg-primary/10 text-primary px-2 py-0.5 rounded min-w-[60px] text-center flex-shrink-0">
+                      {k.kind}
+                    </code>
+                    <Badge variant="secondary" className="text-xs flex-shrink-0">{k.nip}</Badge>
+                    <span className="text-xs text-muted-foreground">{k.desc}</span>
                   </div>
                 ))}
               </div>
@@ -583,86 +653,89 @@ await ndk.connect();`;
           </Card>
         </TabsContent>
 
-        {/* ─── Rate limits ────────────────────────────────────────────────────── */}
-        <TabsContent value="ratelimit" className="space-y-4">
+        {/* ─── Filter Reference ────────────────────────────────────────────────── */}
+        <TabsContent value="filters" className="space-y-4">
+          <Alert className="border-yellow-500/20 bg-yellow-500/5">
+            <AlertTriangle className="w-4 h-4 text-yellow-500" />
+            <AlertTitle className="text-sm">Nostr Filter Syntax</AlertTitle>
+            <AlertDescription className="text-xs">
+              Filters follow the{' '}
+              <a
+                href="https://github.com/nostr-protocol/nips/blob/master/01.md"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                NIP-01
+              </a>{' '}
+              specification. All single-letter tags are indexed by relays and can be filtered with <code className="bg-muted px-1 rounded">#&lt;tag&gt;</code>.
+            </AlertDescription>
+          </Alert>
+
           <Card className="border-border/60">
-            <CardContent className="pt-5 space-y-4">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Useful Queries</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
               <div>
-                <h3 className="font-bold mb-3">Rate Limiting</h3>
-                <div className="space-y-2 text-sm text-muted-foreground">
-                  <p>All API requests are rate-limited per IP address using a sliding window algorithm.</p>
-                  <ul className="space-y-1 ml-4 list-disc">
-                    <li><strong className="text-foreground">100 requests/minute</strong> per IP (anonymous)</li>
-                    <li><strong className="text-foreground">500 requests/minute</strong> with API key (contact us)</li>
-                    <li>Bulk export endpoints: <strong className="text-foreground">10 requests/minute</strong></li>
-                  </ul>
-                </div>
+                <div className="text-sm font-semibold mb-2">All relay submissions</div>
+                <CodeBlock code={`{ "kinds": [${KIND_RELAY_SUBMISSION}], "#t": ["relay-submission"], "limit": 200 }`} />
               </div>
 
-              <Separator />
-
               <div>
-                <h3 className="font-bold mb-3">Response Headers</h3>
-                <CodeBlock code={`X-RateLimit-Limit: 100
-X-RateLimit-Remaining: 87
-X-RateLimit-Reset: 1704067200
-X-Cache: HIT
-X-Data-Updated: 2024-01-01T12:00:00Z
-Access-Control-Allow-Origin: *`} language="http" />
+                <div className="text-sm font-semibold mb-2">All approval/rejection decisions</div>
+                <CodeBlock code={`{ "kinds": [${KIND_RELAY_SUBMISSION}], "#t": ["relay-approval"], "limit": 200 }`} />
               </div>
 
-              <Separator />
-
               <div>
-                <h3 className="font-bold mb-3">Error Responses</h3>
-                <CodeBlock code={`// 429 Too Many Requests
-{
-  "ok": false,
-  "error": "rate_limit_exceeded",
-  "message": "100 req/min exceeded. Retry after 23 seconds.",
-  "retry_after": 23
-}
-
-// 400 Bad Request
-{
-  "ok": false,
-  "error": "invalid_param",
-  "message": "uptime_gte must be between 0 and 100"
-}
-
-// 404 Not Found
-{
-  "ok": false,
-  "error": "not_found",
-  "message": "Relay wss://unknown.relay not in directory"
-}`} language="json" />
+                <div className="text-sm font-semibold mb-2">A specific relay by URL</div>
+                <CodeBlock code={`{ "kinds": [${KIND_RELAY_SUBMISSION}], "#r": ["wss://relay.damus.io"], "limit": 1 }`} />
               </div>
 
-              <Separator />
+              <div>
+                <div className="text-sm font-semibold mb-2">Community votes on a relay</div>
+                <CodeBlock code={`{ "kinds": [7], "#r": ["wss://relay.damus.io"], "limit": 50 }`} />
+              </div>
 
               <div>
-                <h3 className="font-bold mb-3">CORS Policy</h3>
-                <p className="text-sm text-muted-foreground">
-                  All API endpoints return <code className="bg-muted px-1 rounded text-xs">Access-Control-Allow-Origin: *</code>{' '}
-                  so they can be called from any browser or Nostr client without a proxy.
-                  Preflight OPTIONS requests are handled automatically.
-                </p>
+                <div className="text-sm font-semibold mb-2">A user's relay list (NIP-65)</div>
+                <CodeBlock code={`{ "kinds": [10002], "authors": ["<hex_pubkey>"], "limit": 1 }`} />
+              </div>
+
+              <div>
+                <div className="text-sm font-semibold mb-2">NIP-66 relay health for a specific relay</div>
+                <CodeBlock code={`{ "kinds": [30166], "#d": ["wss://relay.damus.io/"], "limit": 1 }`} />
               </div>
             </CardContent>
           </Card>
 
-          <div className="text-center border border-primary/20 rounded-xl p-6 bg-primary/5">
-            <h3 className="font-bold mb-2">Need higher limits?</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              Building a Nostr client or tool that needs more throughput?
-              Contact us for a free API key with 500 req/min.
-            </p>
-            <a href="https://nostr.com" target="_blank" rel="noopener noreferrer">
-              <Button variant="outline" size="sm" className="gap-2">
-                Contact via Nostr <ExternalLink className="w-3.5 h-3.5" />
-              </Button>
-            </a>
-          </div>
+          <Card className="border-border/60">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Filter Fields</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {[
+                  { field: 'ids', type: 'string[]', desc: 'Event IDs (hex) to fetch' },
+                  { field: 'authors', type: 'string[]', desc: 'Pubkeys (hex) of event authors' },
+                  { field: 'kinds', type: 'number[]', desc: 'Event kind numbers' },
+                  { field: '#t', type: 'string[]', desc: 'Filter by "t" tag values' },
+                  { field: '#r', type: 'string[]', desc: 'Filter by "r" tag values (relay URLs)' },
+                  { field: '#d', type: 'string[]', desc: 'Filter by "d" tag values (addressable event IDs)' },
+                  { field: '#e', type: 'string[]', desc: 'Filter by "e" tag values (referenced event IDs)' },
+                  { field: 'since', type: 'number', desc: 'Unix timestamp — only events after this time' },
+                  { field: 'until', type: 'number', desc: 'Unix timestamp — only events before this time' },
+                  { field: 'limit', type: 'number', desc: 'Maximum number of events to return' },
+                ].map((f) => (
+                  <div key={f.field} className="flex items-start gap-3 py-1.5 border-b border-border/30 last:border-0">
+                    <code className="font-mono text-xs text-primary min-w-[80px] flex-shrink-0">{f.field}</code>
+                    <span className="text-xs text-muted-foreground min-w-[80px] flex-shrink-0 font-mono">{f.type}</span>
+                    <span className="text-xs text-muted-foreground">{f.desc}</span>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

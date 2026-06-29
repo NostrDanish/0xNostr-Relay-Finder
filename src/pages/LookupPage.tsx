@@ -1,9 +1,9 @@
 /**
- * LookupPage — npub Relay Lookup
+ * LookupPage — npub Relay Diagnostic Wizard ("Fix My Nostr")
  *
  * Input any npub/nprofile → queries kind:10002 → shows their read/write relay
- * configuration with live status of each relay. Killer feature for debugging
- * "why can't my followers see my posts".
+ * configuration with live status, diagnostic scoring, warnings, and suggestions
+ * for better relays from the directory.
  */
 
 import { useState, useMemo } from 'react';
@@ -12,6 +12,8 @@ import { Link } from 'react-router-dom';
 import {
   Search, User, Wifi, WifiOff, ArrowRight, Info,
   BookOpen, Send, Loader2, AlertCircle, Radio, Copy, Check,
+  AlertTriangle, CheckCircle2, XCircle, Shield, Zap, Plus,
+  Stethoscope, Lightbulb,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,15 +21,115 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { useNpubLookup, resolveToHex } from '@/hooks/useNpubLookup';
 import { useLiveRelayStore, type LiveRelayRecord } from '@/hooks/useLiveRelayStore';
 import { useAuthor } from '@/hooks/useAuthor';
+import { AddToRelayListButton } from '@/components/relay/AddToRelayListButton';
 import { genUserName } from '@/lib/genUserName';
 import { cn, shortenUrl, timeAgo, relayUrlToId } from '@/lib/utils';
-import { UptimeBadge, OnlineIndicator } from '@/components/relay/UptimeBadge';
 import { SparklineChart } from '@/components/relay/SparklineChart';
 import { CheckNowButton } from '@/components/relay/LiveStatusBadges';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+type DiagnosticSeverity = 'critical' | 'warning' | 'info' | 'ok';
+
+interface DiagnosticIssue {
+  severity: DiagnosticSeverity;
+  title: string;
+  description: string;
+}
+
+// ─── Diagnostic Engine ────────────────────────────────────────────────────────
+function computeDiagnostics(
+  relays: { url: string; read: boolean; write: boolean }[],
+  relayMap: Map<string, LiveRelayRecord>,
+): { score: number; grade: string; issues: DiagnosticIssue[] } {
+  const issues: DiagnosticIssue[] = [];
+  let score = 100;
+
+  if (relays.length === 0) {
+    return { score: 0, grade: 'F', issues: [{ severity: 'critical', title: 'No relays', description: 'No NIP-65 relay list published. Your profile and events may not be visible to others.' }] };
+  }
+
+  // Check online status
+  const withStatus = relays.map(r => ({ ...r, live: relayMap.get(r.url) }));
+  const onlineCount = withStatus.filter(r => r.live?.liveOnline ?? r.live?.isOnline).length;
+  const offlineCount = withStatus.filter(r => {
+    const live = r.live;
+    if (!live) return false;
+    return (live.liveOnline === false) || (!live.liveOnline && !live.isOnline);
+  }).length;
+
+  const readRelays = relays.filter(r => r.read);
+  const writeRelays = relays.filter(r => r.write);
+
+  // Critical: All relays offline
+  if (onlineCount === 0 && relays.length > 0) {
+    issues.push({ severity: 'critical', title: 'All relays appear offline', description: 'None of your relays are responding. Your posts and profile are unreachable. Consider adding well-known relays.' });
+    score -= 50;
+  } else if (offlineCount > 0) {
+    issues.push({ severity: 'warning', title: `${offlineCount} relay${offlineCount > 1 ? 's' : ''} offline`, description: 'Some of your relays are not responding. This reduces your visibility but isn\'t critical.' });
+    score -= offlineCount * 5;
+  }
+
+  // Too few relays
+  if (relays.length === 1) {
+    issues.push({ severity: 'warning', title: 'Only 1 relay configured', description: 'Single point of failure. If this relay goes down, you\'re invisible. Add at least 2-3 more relays.' });
+    score -= 15;
+  } else if (relays.length < 3) {
+    issues.push({ severity: 'warning', title: 'Few relays configured', description: `Only ${relays.length} relays. Consider adding more for redundancy and better reach.` });
+    score -= 10;
+  }
+
+  // Too many relays
+  if (relays.length > 15) {
+    issues.push({ severity: 'info', title: 'Many relays configured', description: `${relays.length} relays is a lot. Some clients may slow down trying to connect to all of them. Consider trimming to 5-10 quality relays.` });
+    score -= 5;
+  }
+
+  // No write relays
+  if (writeRelays.length === 0) {
+    issues.push({ severity: 'critical', title: 'No write relays', description: 'You have no relays marked for writing. Your posts won\'t be published anywhere.' });
+    score -= 30;
+  }
+
+  // No read relays
+  if (readRelays.length === 0) {
+    issues.push({ severity: 'critical', title: 'No read relays', description: 'You have no relays marked for reading. Others won\'t know where to send events for you.' });
+    score -= 30;
+  }
+
+  // Check if all relays are paid/auth-required
+  const authRelays = withStatus.filter(r => r.live?.nip11?.limitation?.auth_required || r.live?.nip11?.limitation?.payment_required);
+  if (authRelays.length === relays.length && relays.length > 0) {
+    issues.push({ severity: 'warning', title: 'All relays require auth/payment', description: 'All your relays require authentication or payment. This limits who can see your posts — new followers may not have access.' });
+    score -= 10;
+  }
+
+  // Good things
+  if (onlineCount >= 3) {
+    issues.push({ severity: 'ok', title: `${onlineCount} relays online`, description: 'Good relay coverage — your events are well distributed.' });
+  }
+
+  if (readRelays.length >= 2 && writeRelays.length >= 2) {
+    issues.push({ severity: 'ok', title: 'Balanced read/write config', description: 'You have both read and write relays configured properly.' });
+  }
+
+  score = Math.max(0, Math.min(100, score));
+
+  let grade: string;
+  if (score >= 90) grade = 'A';
+  else if (score >= 80) grade = 'B';
+  else if (score >= 65) grade = 'C';
+  else if (score >= 50) grade = 'D';
+  else grade = 'F';
+
+  return { score, grade, issues };
+}
+
+// ─── Components ───────────────────────────────────────────────────────────────
 
 function ProfileHeader({ pubkey }: { pubkey: string }) {
   const author = useAuthor(pubkey);
@@ -77,24 +179,15 @@ function RelayRow({ url, read, write, liveRelay }: RelayRowProps) {
     <div className="flex flex-col sm:flex-row sm:items-center gap-3 py-3 border-b border-border/40 last:border-0">
       {/* Status + URL */}
       <div className="flex items-center gap-3 flex-1 min-w-0">
-        {/* Online indicator */}
         <div className="flex-shrink-0">
-          {isOnline === true && (
-            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-          )}
-          {isOnline === false && (
-            <div className="w-2.5 h-2.5 rounded-full bg-red-500" />
-          )}
-          {isOnline === undefined && (
-            <div className="w-2.5 h-2.5 rounded-full bg-muted-foreground/40" />
-          )}
+          {isOnline === true && <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" title="Online" />}
+          {isOnline === false && <div className="w-2.5 h-2.5 rounded-full bg-red-500" title="Offline" />}
+          {isOnline === undefined && <div className="w-2.5 h-2.5 rounded-full bg-muted-foreground/40" title="Unknown" />}
         </div>
 
-        {/* URL */}
         <div className="min-w-0 flex-1">
           <code className="text-sm font-mono truncate block">{shortenUrl(url)}</code>
           <div className="flex items-center gap-2 mt-0.5">
-            {/* Read/Write badges */}
             {read && (
               <span className="inline-flex items-center gap-0.5 text-xs bg-blue-500/10 text-blue-500 border border-blue-500/20 px-1.5 py-0.5 rounded-full font-medium">
                 <BookOpen className="w-2.5 h-2.5" /> Read
@@ -105,22 +198,16 @@ function RelayRow({ url, read, write, liveRelay }: RelayRowProps) {
                 <Send className="w-2.5 h-2.5" /> Write
               </span>
             )}
-
-            {/* Latency */}
             {latency != null && (
               <span className={cn(
                 'text-xs px-1.5 py-0.5 rounded border font-mono',
-                latency < 100
-                  ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
-                  : latency < 200
-                  ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20'
-                  : 'bg-red-500/10 text-red-500 border-red-500/20'
+                latency < 100 ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' :
+                latency < 300 ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20' :
+                'bg-red-500/10 text-red-500 border-red-500/20'
               )}>
                 {latency}ms
               </span>
             )}
-
-            {/* In directory? */}
             {!inDirectory && (
               <span className="text-xs text-muted-foreground/60 italic">Not in directory</span>
             )}
@@ -128,20 +215,16 @@ function RelayRow({ url, read, write, liveRelay }: RelayRowProps) {
         </div>
       </div>
 
-      {/* Actions */}
       <div className="flex items-center gap-2 flex-shrink-0">
         {inDirectory && liveRelay && (
           <div className="hidden sm:block">
             <SparklineChart data={liveRelay.uptimeSpark} height={16} uptime={liveRelay.uptimePercent30d} className="w-16" />
           </div>
         )}
-
         <CheckNowButton relayUrl={url} />
-
         <button onClick={handleCopy} className="text-muted-foreground hover:text-foreground transition-colors p-1">
           {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
         </button>
-
         {inDirectory && (
           <Link to={`/relay/${relayUrlToId(url)}`}>
             <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1">
@@ -154,6 +237,128 @@ function RelayRow({ url, read, write, liveRelay }: RelayRowProps) {
   );
 }
 
+function DiagnosticCard({ score, grade, issues }: { score: number; grade: string; issues: DiagnosticIssue[] }) {
+  const gradeColors: Record<string, string> = {
+    A: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30',
+    B: 'text-blue-500 bg-blue-500/10 border-blue-500/30',
+    C: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30',
+    D: 'text-orange-500 bg-orange-500/10 border-orange-500/30',
+    F: 'text-red-500 bg-red-500/10 border-red-500/30',
+  };
+
+  const severityIcons = {
+    critical: <XCircle className="w-4 h-4 text-red-500 flex-shrink-0" />,
+    warning: <AlertTriangle className="w-4 h-4 text-yellow-500 flex-shrink-0" />,
+    info: <Info className="w-4 h-4 text-blue-500 flex-shrink-0" />,
+    ok: <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />,
+  };
+
+  const severityBg = {
+    critical: 'bg-red-500/5 border-red-500/20',
+    warning: 'bg-yellow-500/5 border-yellow-500/20',
+    info: 'bg-blue-500/5 border-blue-500/20',
+    ok: 'bg-emerald-500/5 border-emerald-500/20',
+  };
+
+  return (
+    <Card className="border-border/60">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Stethoscope className="w-4 h-4 text-primary" />
+          Relay Health Diagnostic
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {/* Score and Grade */}
+        <div className="flex items-center gap-6 mb-6">
+          <div className={cn('w-16 h-16 rounded-2xl border-2 flex items-center justify-center', gradeColors[grade])}>
+            <span className="text-3xl font-black">{grade}</span>
+          </div>
+          <div>
+            <div className="text-sm font-medium text-muted-foreground">Health Score</div>
+            <div className="text-3xl font-black">{score}<span className="text-lg text-muted-foreground">/100</span></div>
+          </div>
+        </div>
+
+        {/* Issues */}
+        <div className="space-y-2">
+          {issues.map((issue, i) => (
+            <div key={i} className={cn('border rounded-lg px-3 py-2.5', severityBg[issue.severity])}>
+              <div className="flex items-start gap-2">
+                {severityIcons[issue.severity]}
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold">{issue.title}</div>
+                  <p className="text-xs text-muted-foreground mt-0.5">{issue.description}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SuggestedRelays({ currentRelayUrls, liveRelays }: { currentRelayUrls: Set<string>; liveRelays: LiveRelayRecord[] }) {
+  // Find relays not in the user's list that are online, free, high uptime
+  const suggestions = useMemo(() => {
+    return liveRelays
+      .filter(r =>
+        !currentRelayUrls.has(r.url) &&
+        (r.liveOnline ?? r.isOnline) &&
+        r.isFree &&
+        r.uptimePercent30d >= 95
+      )
+      .sort((a, b) => b.uptimePercent30d - a.uptimePercent30d)
+      .slice(0, 5);
+  }, [liveRelays, currentRelayUrls]);
+
+  if (suggestions.length === 0) return null;
+
+  return (
+    <Card className="border-border/60">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Lightbulb className="w-4 h-4 text-yellow-500" />
+          Suggested Relays
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <p className="text-xs text-muted-foreground mb-4">
+          These free, high-uptime relays from our directory could improve your relay configuration.
+        </p>
+        <div className="space-y-3">
+          {suggestions.map(relay => (
+            <div key={relay.url} className="flex flex-col sm:flex-row sm:items-center gap-2 py-2 border-b border-border/30 last:border-0">
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse flex-shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-sm font-medium truncate">{relay.name}</div>
+                  <code className="text-xs font-mono text-muted-foreground truncate block">{shortenUrl(relay.url)}</code>
+                </div>
+                <Badge variant="secondary" className="text-xs flex-shrink-0">
+                  {relay.uptimePercent30d.toFixed(1)}%
+                </Badge>
+                {relay.avgLatencyMs && (
+                  <span className="text-xs text-muted-foreground font-mono flex-shrink-0">{relay.avgLatencyMs}ms</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <AddToRelayListButton relayUrl={relay.url} variant="compact" />
+                <Link to={`/relay/${relayUrlToId(relay.url)}`}>
+                  <Button variant="ghost" size="sm" className="h-7 px-2 text-xs">Details</Button>
+                </Link>
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
 export function LookupPage() {
   const [input, setInput] = useState('');
   const [searchedPubkey, setSearchedPubkey] = useState<string | null>(null);
@@ -161,31 +366,26 @@ export function LookupPage() {
   const { relays: liveRelays } = useLiveRelayStore();
 
   useSeoMeta({
-    title: 'npub Relay Lookup — 0xNostrRelays',
-    description: "Look up any Nostr user's relay configuration. See which relays they use for reading and writing.",
+    title: 'npub Relay Diagnostic — 0xNostrRelays',
+    description: "Diagnose any Nostr user's relay configuration. Find offline relays, missing coverage, and get better relay suggestions.",
   });
 
   const { data: lookupResult, isLoading, isFetching } = useNpubLookup(searchedPubkey);
 
-  // Build a map of relay URL → live relay for quick lookup
   const relayMap = useMemo(() => {
     const map = new Map<string, LiveRelayRecord>();
-    for (const r of liveRelays) {
-      map.set(r.url, r);
-    }
+    for (const r of liveRelays) map.set(r.url, r);
     return map;
   }, [liveRelays]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-
     const hex = resolveToHex(input);
     if (!hex) {
       setError('Invalid input. Enter an npub (npub1…), nprofile (nprofile1…), or 64-char hex pubkey.');
       return;
     }
-
     setSearchedPubkey(hex);
   };
 
@@ -193,17 +393,25 @@ export function LookupPage() {
   const writeRelays = lookupResult?.relays.filter((r) => r.write) ?? [];
   const allRelays = lookupResult?.relays ?? [];
 
+  const diagnostics = useMemo(() => {
+    if (!lookupResult) return null;
+    return computeDiagnostics(lookupResult.relays, relayMap);
+  }, [lookupResult, relayMap]);
+
+  const currentRelayUrls = useMemo(() => new Set(allRelays.map(r => r.url)), [allRelays]);
+
   return (
     <div className="container mx-auto max-w-4xl px-4 py-8">
       {/* Header */}
       <div className="mb-8">
-        <div className="flex items-center gap-2 mb-2">
-          <User className="w-5 h-5 text-primary" />
-          <h1 className="text-3xl font-black">npub Relay Lookup</h1>
+        <div className="inline-flex items-center gap-2 bg-primary/10 border border-primary/20 rounded-full px-4 py-1.5 text-sm text-primary font-medium mb-3">
+          <Stethoscope className="w-3.5 h-3.5" />
+          Relay Diagnostic
         </div>
+        <h1 className="text-3xl font-black mb-2">Fix My Nostr</h1>
         <p className="text-muted-foreground text-sm max-w-xl">
-          Look up any Nostr user's relay configuration (NIP-65). See which relays they publish to
-          and read from, with live status checks. Perfect for debugging "why can't my followers see my posts".
+          Diagnose any Nostr user's relay configuration. See which relays are online, find problems,
+          and get suggestions for better relays. Perfect for debugging "why can't my followers see my posts".
         </p>
       </div>
 
@@ -224,9 +432,9 @@ export function LookupPage() {
             disabled={isLoading || !input.trim()}
           >
             {(isLoading || isFetching) ? (
-              <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Searching…</>
+              <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Diagnosing…</>
             ) : (
-              'Lookup'
+              'Diagnose'
             )}
           </Button>
         </div>
@@ -237,7 +445,7 @@ export function LookupPage() {
         )}
       </form>
 
-      {/* Results */}
+      {/* No results */}
       {searchedPubkey && !isLoading && !lookupResult && (
         <Card className="border-dashed">
           <CardContent className="py-12 text-center">
@@ -254,9 +462,9 @@ export function LookupPage() {
         </Card>
       )}
 
+      {/* Results */}
       {lookupResult && (
         <div className="space-y-6">
-          {/* Profile header */}
           <ProfileHeader pubkey={lookupResult.pubkey} />
 
           {/* Summary stats */}
@@ -289,6 +497,11 @@ export function LookupPage() {
             </Card>
           </div>
 
+          {/* Diagnostic */}
+          {diagnostics && (
+            <DiagnosticCard score={diagnostics.score} grade={diagnostics.grade} issues={diagnostics.issues} />
+          )}
+
           {/* Relay list */}
           <Card className="border-border/60">
             <CardHeader className="pb-3">
@@ -319,6 +532,11 @@ export function LookupPage() {
               ))}
             </CardContent>
           </Card>
+
+          {/* Suggestions */}
+          {diagnostics && diagnostics.score < 90 && (
+            <SuggestedRelays currentRelayUrls={currentRelayUrls} liveRelays={liveRelays} />
+          )}
         </div>
       )}
     </div>
