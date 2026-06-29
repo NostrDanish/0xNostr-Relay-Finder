@@ -27,6 +27,7 @@ export interface NpubLookupResult {
 /**
  * Resolve an npub, nprofile, or hex pubkey to a hex string.
  * Returns null on failure.
+ * For NIP-05 identifiers (e.g. user@domain.com), use resolveToHexAsync instead.
  */
 export function resolveToHex(input: string): string | null {
   const trimmed = input.trim().replace(/^nostr:/, '');
@@ -42,6 +43,44 @@ export function resolveToHex(input: string): string | null {
     if (decoded.type === 'nprofile') return decoded.data.pubkey;
   } catch {
     // Not a valid NIP-19
+  }
+
+  return null;
+}
+
+/**
+ * Check if input looks like a NIP-05 identifier (user@domain.com or _@domain.com)
+ */
+export function isNIP05(input: string): boolean {
+  return /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(input.trim());
+}
+
+/**
+ * Resolve a NIP-05 identifier to a hex pubkey via the well-known endpoint.
+ * Returns null if resolution fails.
+ */
+export async function resolveNIP05(identifier: string): Promise<string | null> {
+  const trimmed = identifier.trim();
+  const parts = trimmed.split('@');
+  if (parts.length !== 2) return null;
+
+  const [name, domain] = parts;
+
+  try {
+    const url = `https://${domain}/.well-known/nostr.json?name=${encodeURIComponent(name)}`;
+    const resp = await fetch(url, {
+      signal: AbortSignal.timeout(5000),
+      headers: { Accept: 'application/json' },
+    });
+    if (!resp.ok) return null;
+
+    const data = await resp.json() as { names?: Record<string, string> };
+    const pubkey = data?.names?.[name] ?? data?.names?.[name.toLowerCase()];
+    if (pubkey && /^[0-9a-f]{64}$/i.test(pubkey)) {
+      return pubkey.toLowerCase();
+    }
+  } catch {
+    // NIP-05 resolution failed
   }
 
   return null;

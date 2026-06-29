@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import {
   ArrowLeft, Copy, Check, ExternalLink, Wifi, Globe2, Clock,
   Shield, Zap, Code2, Users, Info, AlertCircle, Activity,
   CheckCircle2, XCircle, Loader2, ChevronRight, DollarSign,
   Download, Droplets, ThumbsUp, Wrench, MapPin, FileText,
-  RefreshCw,
+  RefreshCw, FlaskConical, BarChart3, User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,6 +14,8 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Progress } from "@/components/ui/progress";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { UptimeBadge, OnlineIndicator } from "@/components/relay/UptimeBadge";
 import { SparklineChart } from "@/components/relay/SparklineChart";
 import { UseCaseBadge } from "@/components/relay/UseCaseBadge";
@@ -21,11 +23,17 @@ import { NIP66Badge } from "@/components/relay/NIP66Badge";
 import { VotingPanel } from "@/components/relay/VotingPanel";
 import { UptimeHistoryChart } from "@/components/charts/UptimeHistoryChart";
 import { AutoTagsPanel } from "@/components/relay/AutoTagsPanel";
+import { AddToRelayListButton } from "@/components/relay/AddToRelayListButton";
 import { useRelayById } from "@/hooks/useRelayData";
 import { useRelayTest } from "@/hooks/useRelayTest";
 import { useLiveNIP11 } from "@/hooks/useLiveNIP11";
 import { useNIP66Monitor, decodeGeohash } from "@/hooks/useNIP66Monitor";
+import { useNIPVerifier, TESTABLE_NIPS, type NIPTestResult, type NIPVerifyStatus } from "@/hooks/useNIPVerifier";
+import { useAuthor } from "@/hooks/useAuthor";
 import { LiveStatusBadges, CheckNowButton } from "@/components/relay/LiveStatusBadges";
+import { computeHealthScore, gradeColor, gradeBgColor, type HealthScoreBreakdown } from "@/lib/healthScore";
+import type { LiveRelayRecord } from "@/hooks/useLiveRelayStore";
+import { genUserName } from "@/lib/genUserName";
 import { shortenUrl, getNipName, formatPrice, timeAgo, formatLatency, relayUrlToId } from "@/lib/utils";
 
 const CLIENT_INSTRUCTIONS: Record<string, { name: string; steps: string[] }> = {
@@ -46,6 +54,253 @@ const CLIENT_INSTRUCTIONS: Record<string, { name: string; steps: string[] }> = {
     steps: ["Open Amethyst", "Go to Settings → Network → Relays", "Tap Add Relay", "Paste the URL and save"],
   },
 };
+
+// ─── Health Score Component ──────────────────────────────────────────────
+function HealthScoreCard({ relay }: { relay: LiveRelayRecord }) {
+  const breakdown = useMemo(() => computeHealthScore(relay), [relay]);
+
+  return (
+    <Card className="border-border/60">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <BarChart3 className="w-4 h-4 text-primary" />
+          Health Score
+          <span className="text-xs text-muted-foreground font-normal ml-auto">Transparent formula</span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {/* Score + Grade */}
+        <div className="flex items-center gap-6 mb-6">
+          <div className={`w-16 h-16 rounded-2xl border-2 flex items-center justify-center ${gradeBgColor(breakdown.grade)}`}>
+            <span className={`text-3xl font-black ${gradeColor(breakdown.grade)}`}>{breakdown.grade}</span>
+          </div>
+          <div>
+            <div className="text-sm font-medium text-muted-foreground">Health Score</div>
+            <div className="text-3xl font-black">{breakdown.total}<span className="text-lg text-muted-foreground">/100</span></div>
+          </div>
+        </div>
+
+        {/* Component breakdown */}
+        <div className="space-y-3">
+          {breakdown.components.map((comp) => (
+            <div key={comp.name}>
+              <div className="flex items-center justify-between text-xs mb-1">
+                <span className="font-medium">{comp.name}</span>
+                <span className="text-muted-foreground">
+                  {comp.points.toFixed(1)} / {comp.maxPoints}
+                </span>
+              </div>
+              <Progress value={comp.percent * 100} className="h-1.5" />
+              <p className="text-xs text-muted-foreground mt-0.5">{comp.description}</p>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── NIP Verification Panel ─────────────────────────────────────────────
+function NIPVerificationPanel({ relay }: { relay: LiveRelayRecord }) {
+  const { report, running, verify, reset } = useNIPVerifier();
+  const nips = relay.liveNip11?.supported_nips ?? relay.nip11?.supported_nips ?? [];
+
+  const statusIcon = (status: NIPVerifyStatus) => {
+    switch (status) {
+      case 'verified': return <CheckCircle2 className="w-4 h-4 text-emerald-500" />;
+      case 'failed': return <XCircle className="w-4 h-4 text-red-500" />;
+      case 'testing': return <Loader2 className="w-4 h-4 text-primary animate-spin" />;
+      case 'unsupported': return <AlertCircle className="w-4 h-4 text-muted-foreground/40" />;
+      default: return <div className="w-4 h-4 rounded-full border border-border" />;
+    }
+  };
+
+  const statusLabel = (status: NIPVerifyStatus) => {
+    switch (status) {
+      case 'verified': return 'Verified';
+      case 'failed': return 'Failed';
+      case 'testing': return 'Testing...';
+      case 'unsupported': return 'No test';
+      default: return 'Pending';
+    }
+  };
+
+  const statusColor = (status: NIPVerifyStatus) => {
+    switch (status) {
+      case 'verified': return 'text-emerald-500';
+      case 'failed': return 'text-red-500';
+      case 'testing': return 'text-primary';
+      default: return 'text-muted-foreground';
+    }
+  };
+
+  const handleVerify = () => {
+    reset();
+    verify(relay.url, nips);
+  };
+
+  return (
+    <Card className="border-border/60">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <FlaskConical className="w-4 h-4 text-primary" />
+          NIP Verification
+          {report && (
+            <Badge variant="secondary" className="text-xs ml-auto">
+              {report.verified} verified / {report.failed} failed
+            </Badge>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <p className="text-xs text-muted-foreground mb-4">
+          Test whether this relay's claimed NIP support actually works. We open a live WebSocket
+          and send targeted test messages for each testable NIP.
+        </p>
+
+        <div className="flex items-center gap-3 mb-4">
+          <Button
+            onClick={handleVerify}
+            disabled={running || nips.length === 0}
+            size="sm"
+            className="gap-2"
+          >
+            {running ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> Testing {nips.length} NIPs...</>
+            ) : (
+              <><FlaskConical className="w-4 h-4" /> Verify NIP Support</>
+            )}
+          </Button>
+
+          {report && !running && (
+            <div className="flex items-center gap-2 text-sm">
+              {report.connectionOk ? (
+                <><CheckCircle2 className="w-4 h-4 text-emerald-500" /> Connected in {report.connectionLatencyMs}ms</>
+              ) : (
+                <><XCircle className="w-4 h-4 text-red-500" /> Connection failed</>
+              )}
+            </div>
+          )}
+
+          {report && (
+            <div className="ml-auto text-xs text-muted-foreground">
+              Score: <span className="font-bold">{report.verifyScore}%</span>
+            </div>
+          )}
+        </div>
+
+        {/* Results grid */}
+        {report && report.results.length > 0 && (
+          <div className="space-y-1.5">
+            {report.results.map((r) => (
+              <div
+                key={r.nip}
+                className="flex items-center gap-3 py-2 px-3 rounded-lg border border-border/30 bg-card/50 hover:bg-card/80 transition-colors"
+              >
+                {statusIcon(r.status)}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-xs font-bold text-primary">
+                      NIP-{String(r.nip).padStart(2, '0')}
+                    </span>
+                    <span className="text-xs text-muted-foreground">{r.name}</span>
+                  </div>
+                  {r.detail && (
+                    <p className="text-xs text-muted-foreground/80 mt-0.5 truncate">{r.detail}</p>
+                  )}
+                </div>
+                <span className={`text-xs font-medium ${statusColor(r.status)}`}>
+                  {statusLabel(r.status)}
+                </span>
+                {r.latencyMs != null && r.status !== 'unsupported' && (
+                  <span className="text-xs text-muted-foreground font-mono">{r.latencyMs}ms</span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Legend when no report */}
+        {!report && nips.length > 0 && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+            {[
+              { icon: <CheckCircle2 className="w-3 h-3 text-emerald-500" />, label: 'Verified', desc: 'Test passed' },
+              { icon: <XCircle className="w-3 h-3 text-red-500" />, label: 'Failed', desc: 'Claimed but failed' },
+              { icon: <AlertCircle className="w-3 h-3 text-muted-foreground/40" />, label: 'No test', desc: 'Cannot auto-test' },
+              { icon: <div className="w-3 h-3 rounded-full border border-border" />, label: 'Pending', desc: 'Not yet tested' },
+            ].map(l => (
+              <div key={l.label} className="flex items-center gap-1.5 text-muted-foreground">
+                {l.icon} <span>{l.label}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {nips.length === 0 && (
+          <p className="text-sm text-muted-foreground text-center py-4">
+            No NIP support information available to verify.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Operator Profile Component ──────────────────────────────────────────
+function OperatorProfile({ pubkey }: { pubkey: string }) {
+  const author = useAuthor(pubkey);
+  const meta = author.data?.metadata;
+  const name = meta?.name ?? genUserName(pubkey);
+
+  return (
+    <Card className="border-border/60">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <User className="w-4 h-4 text-primary" />
+          Relay Operator
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-center gap-4 mb-4">
+          <Avatar className="w-12 h-12 border-2 border-primary/20">
+            <AvatarImage src={meta?.picture} alt={name} />
+            <AvatarFallback className="text-lg font-bold">{name.charAt(0).toUpperCase()}</AvatarFallback>
+          </Avatar>
+          <div className="min-w-0 flex-1">
+            <div className="font-bold text-sm truncate">{name}</div>
+            {meta?.nip05 && (
+              <p className="text-xs text-primary truncate">{meta.nip05}</p>
+            )}
+            <p className="text-xs text-muted-foreground font-mono truncate">
+              {pubkey.slice(0, 16)}...{pubkey.slice(-8)}
+            </p>
+          </div>
+        </div>
+
+        {meta?.about && (
+          <p className="text-xs text-muted-foreground leading-relaxed mb-3 line-clamp-3">{meta.about}</p>
+        )}
+
+        {meta?.website && (
+          <a
+            href={meta.website}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
+          >
+            <Globe2 className="w-3 h-3" /> {meta.website}
+          </a>
+        )}
+
+        {meta?.lud16 && (
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-2">
+            <Zap className="w-3 h-3 text-yellow-500" /> {meta.lud16}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 export function RelayDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -223,10 +478,19 @@ export function RelayDetailPage() {
         </CardContent>
       </Card>
 
+      {/* Add to relay list CTA */}
+      <div className="flex items-center gap-3 mb-6">
+        <AddToRelayListButton relayUrl={relay.url} />
+      </div>
+
       {/* Main content tabs */}
       <Tabs defaultValue="overview" className="space-y-6">
-        <TabsList className="bg-muted/50">
+        <TabsList className="bg-muted/50 flex-wrap h-auto gap-0.5">
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="verify" className="flex items-center gap-1">
+            <FlaskConical className="w-3 h-3" />
+            Verify
+          </TabsTrigger>
           <TabsTrigger value="uptime">Uptime</TabsTrigger>
           <TabsTrigger value="nip66" className="flex items-center gap-1">
             <Activity className="w-3 h-3" />
@@ -421,6 +685,19 @@ export function RelayDetailPage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Health Score + Operator Profile */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <HealthScoreCard relay={relay as LiveRelayRecord} />
+            {effectiveNip11.pubkey && (
+              <OperatorProfile pubkey={effectiveNip11.pubkey} />
+            )}
+          </div>
+        </TabsContent>
+
+        {/* Verify Tab */}
+        <TabsContent value="verify" className="space-y-5">
+          <NIPVerificationPanel relay={relay as LiveRelayRecord} />
         </TabsContent>
 
         {/* Uptime Tab */}

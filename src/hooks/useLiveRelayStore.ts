@@ -79,6 +79,7 @@ export interface LiveNetworkStats {
   nip42Auth: number;
   blossomEnabled: number;
   nip66Enriched: number;
+  countriesRepresented: number;
   lastUpdated: number;
 }
 
@@ -246,6 +247,7 @@ export function useLiveRelayStore() {
       nip42Auth: nipCounts(42),
       blossomEnabled: liveRelays.filter((r) => r.blossomSupported).length,
       nip66Enriched: liveRelays.filter((r) => r.nip66?.enriched).length,
+      countriesRepresented: new Set(liveRelays.map((r) => r.countryCode).filter(Boolean)).size,
       lastUpdated: Date.now(),
     };
   }, [liveRelays]);

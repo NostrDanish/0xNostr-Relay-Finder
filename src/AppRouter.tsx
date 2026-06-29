@@ -11,6 +11,9 @@ import { AboutPage } from "@/pages/AboutPage";
 import { ApiDocsPage } from "@/pages/ApiDocsPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { LookupPage } from "@/pages/LookupPage";
+import { GraveyardPage } from "@/pages/GraveyardPage";
+import { SoftwarePage } from "@/pages/SoftwarePage";
+import { RecommenderPage } from "@/pages/RecommenderPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { useLiveRelayStore } from "@/hooks/useLiveRelayStore";
 
@@ -40,6 +43,9 @@ function AppLayout() {
           <Route path="/about" element={<AboutPage />} />
           <Route path="/api" element={<ApiDocsPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/graveyard" element={<GraveyardPage />} />
+          <Route path="/software" element={<SoftwarePage />} />
+          <Route path="/recommend" element={<RecommenderPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </main>

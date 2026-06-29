@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Copy, Check, ExternalLink, Globe2, Clock, Wifi, Droplets, Download, Activity } from "lucide-react";
+import { Copy, Check, ExternalLink, Globe2, Clock, Wifi, Droplets, Download, Activity, Plus } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -10,6 +10,7 @@ import { UseCaseBadge } from "./UseCaseBadge";
 import { PriceBadge } from "./PriceBadge";
 import { NIP66Badge, NIP66StatusDot } from "./NIP66Badge";
 import { CommunityTagsCompact } from "./VotingPanel";
+import { AddToRelayListButton } from "./AddToRelayListButton";
 import type { RelayRecord } from "@/types/relay";
 import { relayUrlToId, shortenUrl, timeAgo, getNipName, formatLatency } from "@/lib/utils";
 
@@ -232,9 +233,8 @@ export function RelayCard({ relay, view = "grid" }: RelayCardProps) {
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-1">
-              <Clock className="w-3 h-3" />
-              <span>{timeAgo(relay.lastChecked)}</span>
+            <div onClick={(e) => e.preventDefault()}>
+              <AddToRelayListButton relayUrl={relay.url} variant="compact" />
             </div>
           </div>
         </CardContent>

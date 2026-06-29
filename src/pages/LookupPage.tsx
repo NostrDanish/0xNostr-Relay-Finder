@@ -23,7 +23,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
-import { useNpubLookup, resolveToHex } from '@/hooks/useNpubLookup';
+import { useNpubLookup, resolveToHex, isNIP05, resolveNIP05 } from '@/hooks/useNpubLookup';
 import { useLiveRelayStore, type LiveRelayRecord } from '@/hooks/useLiveRelayStore';
 import { useAuthor } from '@/hooks/useAuthor';
 import { AddToRelayListButton } from '@/components/relay/AddToRelayListButton';
@@ -108,6 +108,23 @@ function computeDiagnostics(
     score -= 10;
   }
 
+  // Check for NIP-17 DM support
+  const dmRelays = withStatus.filter(r => {
+    const nips = r.live?.nip11?.supported_nips ?? [];
+    return nips.includes(17) || nips.includes(4);
+  });
+  if (dmRelays.length === 0 && relays.length > 0) {
+    issues.push({ severity: 'warning', title: 'No relays with DM support', description: 'None of your relays support NIP-17 (private DMs) or NIP-04 (encrypted DMs). You may not receive direct messages.' });
+    score -= 5;
+  }
+
+  // Check geographic diversity
+  const countries = new Set(withStatus.map(r => r.live?.countryCode).filter(Boolean));
+  if (countries.size <= 1 && relays.length >= 3) {
+    issues.push({ severity: 'info', title: 'Low geographic diversity', description: 'All relays appear to be in the same country. Consider adding relays in different regions for better resilience.' });
+    score -= 3;
+  }
+
   // Good things
   if (onlineCount >= 3) {
     issues.push({ severity: 'ok', title: `${onlineCount} relays online`, description: 'Good relay coverage — your events are well distributed.' });
@@ -115,6 +132,10 @@ function computeDiagnostics(
 
   if (readRelays.length >= 2 && writeRelays.length >= 2) {
     issues.push({ severity: 'ok', title: 'Balanced read/write config', description: 'You have both read and write relays configured properly.' });
+  }
+
+  if (dmRelays.length > 0) {
+    issues.push({ severity: 'ok', title: 'DM support available', description: `${dmRelays.length} relay${dmRelays.length > 1 ? 's' : ''} support encrypted direct messages.` });
   }
 
   score = Math.max(0, Math.min(100, score));
@@ -378,12 +399,28 @@ export function LookupPage() {
     return map;
   }, [liveRelays]);
 
-  const handleSearch = (e: React.FormEvent) => {
+  const [resolving, setResolving] = useState(false);
+
+  const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    // Check NIP-05 first
+    if (isNIP05(input)) {
+      setResolving(true);
+      const hex = await resolveNIP05(input);
+      setResolving(false);
+      if (hex) {
+        setSearchedPubkey(hex);
+        return;
+      }
+      setError(`Could not resolve NIP-05 identifier "${input}". Check the address and try again.`);
+      return;
+    }
+
     const hex = resolveToHex(input);
     if (!hex) {
-      setError('Invalid input. Enter an npub (npub1…), nprofile (nprofile1…), or 64-char hex pubkey.');
+      setError('Invalid input. Enter an npub, nprofile, NIP-05 address (user@domain.com), or 64-char hex pubkey.');
       return;
     }
     setSearchedPubkey(hex);
@@ -422,16 +459,18 @@ export function LookupPage() {
           <Input
             value={input}
             onChange={(e) => { setInput(e.target.value); setError(''); }}
-            placeholder="Paste an npub, nprofile, or hex pubkey…"
+            placeholder="npub, nprofile, NIP-05 (user@domain.com), or hex…"
             className="pl-12 pr-36 h-14 text-base border-0 bg-transparent focus-visible:ring-0 rounded-xl font-mono"
           />
           <Button
             type="submit"
             size="sm"
             className="absolute right-2 top-1/2 -translate-y-1/2 h-10 px-5 font-semibold glow-primary-sm"
-            disabled={isLoading || !input.trim()}
+            disabled={isLoading || resolving || !input.trim()}
           >
-            {(isLoading || isFetching) ? (
+            {resolving ? (
+              <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Resolving NIP-05…</>
+            ) : (isLoading || isFetching) ? (
               <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Diagnosing…</>
             ) : (
               'Diagnose'

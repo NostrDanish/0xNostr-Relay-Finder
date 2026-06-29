@@ -25,7 +25,8 @@ const NAV_LINKS = [
   { href: "/", label: "Home" },
   { href: "/relays", label: "Explore" },
   { href: "/lookup", label: "Lookup" },
-  { href: "/api", label: "API" },
+  { href: "/recommend", label: "Find Relay" },
+  { href: "/software", label: "Software" },
   { href: "/submit", label: "Submit" },
   { href: "/about", label: "About" },
 ];

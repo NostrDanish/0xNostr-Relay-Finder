@@ -1,7 +1,11 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useSeoMeta } from "@unhead/react";
-import { Search, Radio, TrendingUp, Globe2, Zap, Shield, ArrowRight, Star, CheckCircle2, Code2, Activity, User } from "lucide-react";
+import {
+  Search, Radio, TrendingUp, Globe2, Zap, Shield, ArrowRight, Star, CheckCircle2,
+  Code2, Activity, User, Wifi, MessageCircle, Image, Lock, Stethoscope, Skull,
+  Sparkles, BarChart3,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -27,6 +31,33 @@ const WHY_POINTS = [
   { icon: Shield, title: "Trust Scores", desc: "Objective trust scores based on uptime history, operator reputation, and NIP support." },
 ];
 
+/** Animated number counter */
+function AnimatedCounter({ value, duration = 1200 }: { value: number; duration?: number }) {
+  const [display, setDisplay] = useState(0);
+  const ref = useRef<number>(0);
+
+  useEffect(() => {
+    if (value === 0) { setDisplay(0); return; }
+    const start = ref.current;
+    const diff = value - start;
+    const startTime = Date.now();
+
+    function tick() {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      // Ease out cubic
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const current = Math.round(start + diff * eased);
+      setDisplay(current);
+      if (progress < 1) requestAnimationFrame(tick);
+      else ref.current = value;
+    }
+    requestAnimationFrame(tick);
+  }, [value, duration]);
+
+  return <>{display}</>;
+}
+
 export function HomePage() {
   const [query, setQuery] = useState("");
   const navigate = useNavigate();
@@ -34,13 +65,6 @@ export function HomePage() {
 
   const FEATURED = useMemo(() => relays.filter((r) => r.featured).slice(0, 4), [relays]);
   const TOP_RELAYS = useMemo(() => [...relays].sort((a, b) => b.uptimePercent30d - a.uptimePercent30d).slice(0, 6), [relays]);
-
-  const HERO_STATS = useMemo(() => [
-    { label: "Relays Tracked", value: stats.totalRelays.toString(), icon: Radio, color: "text-primary" },
-    { label: "Online Now", value: stats.onlineNow.toString(), icon: TrendingUp, color: "text-emerald-500" },
-    { label: "NIP-66 Enriched", value: stats.nip66Enriched.toString(), icon: Activity, color: "text-violet-500" },
-    { label: "Free Relays", value: stats.freeRelays.toString(), icon: Globe2, color: "text-sky-500" },
-  ], [stats]);
 
   useSeoMeta({
     title: "0xNostrRelays — Find the Perfect Nostr Relay",
@@ -125,18 +149,45 @@ export function HomePage() {
             ))}
           </div>
 
-          {/* Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 max-w-3xl mx-auto animate-in fade-in-0 duration-500 delay-500">
-            {HERO_STATS.map((stat) => {
+          {/* Live Network Stats — primary row */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 max-w-3xl mx-auto mb-4 animate-in fade-in-0 duration-500 delay-500">
+            {[
+              { label: "Relays Tracked", value: stats.totalRelays, icon: Radio, color: "text-primary" },
+              { label: "Online Now", value: stats.onlineNow, icon: Wifi, color: "text-emerald-500" },
+              { label: "Avg Latency", value: stats.avgLatencyMs, icon: Zap, color: "text-yellow-500", suffix: "ms" },
+              { label: "Free Relays", value: stats.freeRelays, icon: Globe2, color: "text-sky-500" },
+            ].map((stat) => {
               const Icon = stat.icon;
               return (
-                <div
-                  key={stat.label}
-                  className="bg-card/60 border border-border/40 rounded-xl p-4 backdrop-blur-sm"
-                >
+                <div key={stat.label} className="bg-card/60 border border-border/40 rounded-xl p-4 backdrop-blur-sm">
                   <Icon className={`w-5 h-5 mb-2 mx-auto ${stat.color}`} />
-                  <div className="text-2xl font-black">{stat.value}</div>
+                  <div className="text-2xl font-black">
+                    <AnimatedCounter value={stat.value} />
+                    {stat.suffix && <span className="text-sm text-muted-foreground font-medium ml-0.5">{stat.suffix}</span>}
+                  </div>
                   <div className="text-xs text-muted-foreground mt-0.5">{stat.label}</div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Live NIP stats — secondary row */}
+          <div className="grid grid-cols-3 md:grid-cols-7 gap-2 max-w-3xl mx-auto animate-in fade-in-0 duration-500 delay-600">
+            {[
+              { label: "Countries", value: stats.countriesRepresented, icon: Globe2, color: "text-emerald-500" },
+              { label: "NIP-50 Search", value: stats.nip50Search, icon: Search, color: "text-orange-500" },
+              { label: "NIP-17 DMs", value: stats.nip17DMs, icon: MessageCircle, color: "text-violet-500" },
+              { label: "NIP-42 Auth", value: stats.nip42Auth, icon: Lock, color: "text-rose-500" },
+              { label: "NIP-57 Zaps", value: stats.nip57Zaps, icon: Zap, color: "text-amber-500" },
+              { label: "Blossom", value: stats.blossomEnabled, icon: Image, color: "text-pink-500" },
+              { label: "NIP-66", value: stats.nip66Enriched, icon: Activity, color: "text-cyan-500" },
+            ].map((stat) => {
+              const Icon = stat.icon;
+              return (
+                <div key={stat.label} className="bg-card/40 border border-border/30 rounded-lg p-2.5 backdrop-blur-sm">
+                  <Icon className={`w-3.5 h-3.5 mx-auto mb-1 ${stat.color}`} />
+                  <div className="text-base font-bold"><AnimatedCounter value={stat.value} /></div>
+                  <div className="text-[10px] text-muted-foreground leading-tight">{stat.label}</div>
                 </div>
               );
             })}
@@ -246,10 +297,10 @@ export function HomePage() {
         </div>
       </section>
 
-      {/* API CTA */}
+      {/* Tools CTA grid */}
       <section className="container mx-auto max-w-7xl px-4 py-12">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* API promo */}
+          {/* Nostr Protocol query */}
           <div className="lg:col-span-2 bg-gradient-to-br from-primary/10 via-violet-500/5 to-transparent border border-primary/20 rounded-2xl p-6">
             <div className="flex items-start gap-4">
               <div className="w-12 h-12 bg-primary/15 rounded-xl flex items-center justify-center flex-shrink-0">
@@ -257,24 +308,23 @@ export function HomePage() {
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
-                  <h3 className="font-black text-lg">Free API for Nostr Clients</h3>
-                  <span className="text-xs bg-emerald-500/15 text-emerald-500 border border-emerald-500/25 px-2 py-0.5 rounded-full font-bold">FREE</span>
+                  <h3 className="font-black text-lg">Query via Nostr Protocol</h3>
+                  <span className="text-xs bg-emerald-500/15 text-emerald-500 border border-emerald-500/25 px-2 py-0.5 rounded-full font-bold">OPEN</span>
                 </div>
                 <p className="text-sm text-muted-foreground mb-4">
-                  Query relays programmatically. Filter by uptime, pricing, NIP support, Blossom, country, and community votes.
-                  Used by Coracle, Amethyst, and other Nostr clients.
+                  All data is stored as signed Nostr events on our relays. Query directly via WebSocket using the standard NIP-01 protocol. No API keys, no rate limits — fully decentralised.
                 </p>
                 <code className="block text-xs bg-background/80 border border-border/50 rounded-lg px-3 py-2 font-mono text-muted-foreground mb-3">
-                  GET /api/relays?uptime_gte=99&amp;pricing=free&amp;blossom=true&amp;limit=10
+                  ["REQ","sub",{`{"kinds":[30078],"#t":["relay-submission"],"limit":50}`}]
                 </code>
                 <div className="flex gap-2">
                   <Link to="/api">
                     <Button size="sm" className="gap-2">
                       <Code2 className="w-3.5 h-3.5" />
-                      View API Docs
+                      Protocol Docs
                     </Button>
                   </Link>
-                  <span className="text-xs text-muted-foreground self-center">100 req/min · No auth · CORS enabled</span>
+                  <span className="text-xs text-muted-foreground self-center">WebSocket · No auth · Decentralised</span>
                 </div>
               </div>
             </div>
@@ -288,7 +338,7 @@ export function HomePage() {
             <h3 className="font-bold mb-1.5">NIP-66 Enriched Data</h3>
             <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
               Official health data from nostr.watch-style monitors via kind:30166 and kind:10166 events.
-              {stats.nip66Enriched} relays enriched so far.
+              {stats.nip66Enriched > 0 ? ` ${stats.nip66Enriched} relays enriched so far.` : ''}
             </p>
             <Link to="/relays?nip66Only=true">
               <Button size="sm" variant="outline" className="gap-2 text-xs border-violet-500/30 text-violet-500 hover:bg-violet-500/10">
@@ -300,27 +350,104 @@ export function HomePage() {
         </div>
       </section>
 
-      {/* npub Lookup CTA */}
+      {/* npub Diagnostic + Graveyard CTAs */}
       <section className="container mx-auto max-w-7xl px-4 py-8">
-        <div className="bg-gradient-to-br from-cyan-500/10 via-emerald-500/5 to-transparent border border-cyan-500/20 rounded-2xl p-6">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 bg-cyan-500/15 rounded-xl flex items-center justify-center flex-shrink-0">
-              <User className="w-6 h-6 text-cyan-500" />
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1">
-                <h3 className="font-black text-lg">npub Relay Lookup</h3>
-                <span className="text-xs bg-cyan-500/15 text-cyan-500 border border-cyan-500/25 px-2 py-0.5 rounded-full font-bold">NEW</span>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* npub Diagnostic */}
+          <div className="bg-gradient-to-br from-cyan-500/10 via-emerald-500/5 to-transparent border border-cyan-500/20 rounded-2xl p-6">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-cyan-500/15 rounded-xl flex items-center justify-center flex-shrink-0">
+                <Stethoscope className="w-6 h-6 text-cyan-500" />
               </div>
-              <p className="text-sm text-muted-foreground mb-4">
-                Debug relay connectivity issues. Look up any Nostr user's relay list (NIP-65) and see which relays they
-                publish to and read from — with live status checks.
-              </p>
-              <div className="flex gap-2">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="font-black text-lg">Fix My Nostr</h3>
+                  <span className="text-xs bg-cyan-500/15 text-cyan-500 border border-cyan-500/25 px-2 py-0.5 rounded-full font-bold">DIAGNOSTIC</span>
+                </div>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Paste any npub to diagnose their relay config. See which relays are online, get a health score, and find better alternatives.
+                </p>
                 <Link to="/lookup">
                   <Button size="sm" className="gap-2">
-                    <User className="w-3.5 h-3.5" />
-                    Look Up npub
+                    <Stethoscope className="w-3.5 h-3.5" />
+                    Diagnose npub
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          </div>
+
+          {/* Graveyard teaser */}
+          <div className="bg-gradient-to-br from-zinc-500/10 via-red-500/5 to-transparent border border-zinc-500/20 rounded-2xl p-6">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-zinc-500/15 rounded-xl flex items-center justify-center flex-shrink-0">
+                <Skull className="w-6 h-6 text-zinc-400" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="font-black text-lg">Relay Graveyard</h3>
+                  <span className="text-xs bg-zinc-500/15 text-zinc-400 border border-zinc-500/25 px-2 py-0.5 rounded-full font-bold">RIP</span>
+                </div>
+                <p className="text-sm text-muted-foreground mb-4">
+                  See relays that were once in the directory but have gone permanently offline. A memorial to the fallen relays of Nostr.
+                </p>
+                <Link to="/graveyard">
+                  <Button size="sm" variant="outline" className="gap-2">
+                    <Skull className="w-3.5 h-3.5" />
+                    View Graveyard
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Recommender + Software */}
+      <section className="container mx-auto max-w-7xl px-4 py-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Relay Recommender */}
+          <div className="bg-gradient-to-br from-violet-500/10 via-pink-500/5 to-transparent border border-violet-500/20 rounded-2xl p-6">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-violet-500/15 rounded-xl flex items-center justify-center flex-shrink-0">
+                <Sparkles className="w-6 h-6 text-violet-500" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="font-black text-lg">Find Your Perfect Relay</h3>
+                  <span className="text-xs bg-violet-500/15 text-violet-500 border border-violet-500/25 px-2 py-0.5 rounded-full font-bold">QUIZ</span>
+                </div>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Answer 3 quick questions and get personalized relay recommendations based on your use case, budget, and privacy needs.
+                </p>
+                <Link to="/recommend">
+                  <Button size="sm" className="gap-2">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    Take the Quiz
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          </div>
+
+          {/* Software Leaderboard */}
+          <div className="bg-gradient-to-br from-amber-500/10 via-orange-500/5 to-transparent border border-amber-500/20 rounded-2xl p-6">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-amber-500/15 rounded-xl flex items-center justify-center flex-shrink-0">
+                <BarChart3 className="w-6 h-6 text-amber-500" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="font-black text-lg">Relay Software</h3>
+                  <span className="text-xs bg-amber-500/15 text-amber-500 border border-amber-500/25 px-2 py-0.5 rounded-full font-bold">LEADERBOARD</span>
+                </div>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Which relay software is most popular? Compare strfry, nostr-rs-relay, khatru, and more by relay count, uptime, and NIP support.
+                </p>
+                <Link to="/software">
+                  <Button size="sm" variant="outline" className="gap-2">
+                    <BarChart3 className="w-3.5 h-3.5" />
+                    View Leaderboard
                   </Button>
                 </Link>
               </div>

@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useSeoMeta } from '@unhead/react';
 import {
   Shield, Radio, CheckCircle2, XCircle, Clock, AlertTriangle,
   Users, Trash2, Plus, RefreshCw, Copy, Check, ExternalLink,
   BarChart3, Inbox, Flag, Crown, UserCog, Search, ChevronRight,
-  Eye, Lock, Loader2, LogOut, ArrowLeft,
+  Eye, Lock, Loader2, LogOut, ArrowLeft, Radar, Wifi,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -37,6 +37,8 @@ import {
 import { nip19 } from 'nostr-tools';
 import { genUserName } from '@/lib/genUserName';
 import { timeAgo, shortenUrl } from '@/lib/utils';
+import { useRelayCrawler, type DiscoveredRelay } from '@/hooks/useRelayCrawler';
+import { useLiveRelayStore } from '@/hooks/useLiveRelayStore';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function RoleBadge({ role }: { role: string }) {
