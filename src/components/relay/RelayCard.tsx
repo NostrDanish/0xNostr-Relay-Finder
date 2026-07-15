@@ -11,7 +11,9 @@ import { PriceBadge } from "./PriceBadge";
 import { NIP66Badge, NIP66StatusDot } from "./NIP66Badge";
 import { CommunityTagsCompact } from "./VotingPanel";
 import { AddToRelayListButton } from "./AddToRelayListButton";
+import { BadgeCount } from "./RelayBadges";
 import type { RelayRecord } from "@/types/relay";
+import type { LiveRelayRecord } from "@/hooks/useLiveRelayStore";
 import { relayUrlToId, shortenUrl, timeAgo, getNipName, formatLatency } from "@/lib/utils";
 
 interface RelayCardProps {
@@ -123,6 +125,7 @@ export function RelayCard({ relay, view = "grid" }: RelayCardProps) {
               <div className="flex items-center gap-1.5">
                 <h3 className="font-bold text-sm leading-tight truncate">{relay.name}</h3>
                 {relay.nip66 && <NIP66StatusDot data={relay.nip66} />}
+                <BadgeCount relay={relay as LiveRelayRecord} />
               </div>
             </div>
             <div className="flex items-center gap-1 flex-shrink-0">

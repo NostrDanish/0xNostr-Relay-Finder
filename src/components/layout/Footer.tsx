@@ -50,15 +50,16 @@ export function Footer() {
             </p>
           </div>
 
-          {/* Explore */}
+          {/* Discover */}
           <div className="space-y-3">
-            <h4 className="text-sm font-semibold">Explore</h4>
+            <h4 className="text-sm font-semibold">Discover</h4>
             <ul className="space-y-2 text-sm text-muted-foreground">
-              <li><Link to="/relays" className="hover:text-foreground transition-colors">All Relays</Link></li>
-              <li><Link to="/relays?pricing=free" className="hover:text-foreground transition-colors">Free Relays</Link></li>
-              <li><Link to="/relays?pricing=paid" className="hover:text-foreground transition-colors">Paid Relays</Link></li>
-              <li><Link to="/relays?minUptime=99" className="hover:text-foreground transition-colors">99%+ Uptime</Link></li>
-              <li><Link to="/lookup" className="hover:text-foreground transition-colors">npub Relay Lookup</Link></li>
+              <li><Link to="/explore" className="hover:text-foreground transition-colors">Explore Relays</Link></li>
+              <li><Link to="/relays" className="hover:text-foreground transition-colors">Full Directory</Link></li>
+              <li><Link to="/build" className="hover:text-foreground transition-colors">Build My Relay Set</Link></li>
+              <li><Link to="/compare" className="hover:text-foreground transition-colors">Compare Relays</Link></li>
+              <li><Link to="/recommend" className="hover:text-foreground transition-colors">Quick Quiz</Link></li>
+              <li><Link to="/lookup" className="hover:text-foreground transition-colors">Fix My Nostr</Link></li>
             </ul>
           </div>
 
@@ -77,9 +78,10 @@ export function Footer() {
           <div className="space-y-3">
             <h4 className="text-sm font-semibold">Resources</h4>
             <ul className="space-y-2 text-sm text-muted-foreground">
+              <li><Link to="/software" className="hover:text-foreground transition-colors">Relay Software</Link></li>
+              <li><Link to="/graveyard" className="hover:text-foreground transition-colors">Relay Graveyard</Link></li>
               <li><Link to="/about" className="hover:text-foreground transition-colors">About Nostr Relays</Link></li>
-              <li><Link to="/about#scoring" className="hover:text-foreground transition-colors">How Scores Work</Link></li>
-              <li><Link to="/api" className="hover:text-foreground transition-colors">Public API</Link></li>
+              <li><Link to="/api" className="hover:text-foreground transition-colors">Protocol Docs</Link></li>
               <li><Link to="/submit" className="hover:text-foreground transition-colors">Submit a Relay</Link></li>
               <li>
                 <a

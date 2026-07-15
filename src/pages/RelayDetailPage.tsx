@@ -5,7 +5,7 @@ import {
   Shield, Zap, Code2, Users, Info, AlertCircle, Activity,
   CheckCircle2, XCircle, Loader2, ChevronRight, DollarSign,
   Download, Droplets, ThumbsUp, Wrench, MapPin, FileText,
-  RefreshCw, FlaskConical, BarChart3, User,
+  RefreshCw, FlaskConical, BarChart3, User, GitCompareArrows,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,6 +31,7 @@ import { useNIP66Monitor, decodeGeohash } from "@/hooks/useNIP66Monitor";
 import { useNIPVerifier, TESTABLE_NIPS, type NIPTestResult, type NIPVerifyStatus } from "@/hooks/useNIPVerifier";
 import { useAuthor } from "@/hooks/useAuthor";
 import { LiveStatusBadges, CheckNowButton } from "@/components/relay/LiveStatusBadges";
+import { RelayBadges } from "@/components/relay/RelayBadges";
 import { computeHealthScore, gradeColor, gradeBgColor, type HealthScoreBreakdown } from "@/lib/healthScore";
 import type { LiveRelayRecord } from "@/hooks/useLiveRelayStore";
 import { genUserName } from "@/lib/genUserName";
@@ -455,6 +456,11 @@ export function RelayDetailPage() {
                   </Link>
                 ))}
               </div>
+
+              {/* Achievement Badges */}
+              <div className="mt-3">
+                <RelayBadges relay={relay as LiveRelayRecord} size="sm" />
+              </div>
             </div>
 
             {/* Right: Key stats */}
@@ -481,6 +487,12 @@ export function RelayDetailPage() {
       {/* Add to relay list CTA */}
       <div className="flex items-center gap-3 mb-6">
         <AddToRelayListButton relayUrl={relay.url} />
+        <Link to={`/compare?r1=${encodeURIComponent(relay.url)}`}>
+          <Button variant="outline" size="sm" className="gap-2 text-xs">
+            <GitCompareArrows className="w-3.5 h-3.5" />
+            Compare
+          </Button>
+        </Link>
       </div>
 
       {/* Main content tabs */}

@@ -14,6 +14,9 @@ import { LookupPage } from "@/pages/LookupPage";
 import { GraveyardPage } from "@/pages/GraveyardPage";
 import { SoftwarePage } from "@/pages/SoftwarePage";
 import { RecommenderPage } from "@/pages/RecommenderPage";
+import { ComparePage } from "@/pages/ComparePage";
+import { BuildPage } from "@/pages/BuildPage";
+import { ExplorePage } from "@/pages/ExplorePage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { useLiveRelayStore } from "@/hooks/useLiveRelayStore";
 
@@ -46,6 +49,9 @@ function AppLayout() {
           <Route path="/graveyard" element={<GraveyardPage />} />
           <Route path="/software" element={<SoftwarePage />} />
           <Route path="/recommend" element={<RecommenderPage />} />
+          <Route path="/compare" element={<ComparePage />} />
+          <Route path="/build" element={<BuildPage />} />
+          <Route path="/explore" element={<ExplorePage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </main>

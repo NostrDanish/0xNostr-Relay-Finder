@@ -4,7 +4,7 @@ import { useSeoMeta } from "@unhead/react";
 import {
   Search, Radio, TrendingUp, Globe2, Zap, Shield, ArrowRight, Star, CheckCircle2,
   Code2, Activity, User, Wifi, MessageCircle, Image, Lock, Stethoscope, Skull,
-  Sparkles, BarChart3,
+  Sparkles, BarChart3, GitCompareArrows, Wrench, Compass,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -403,55 +403,117 @@ export function HomePage() {
         </div>
       </section>
 
-      {/* Recommender + Software */}
+      {/* Build + Compare — Hero tools */}
       <section className="container mx-auto max-w-7xl px-4 py-8">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Relay Recommender */}
-          <div className="bg-gradient-to-br from-violet-500/10 via-pink-500/5 to-transparent border border-violet-500/20 rounded-2xl p-6">
+          {/* Build My Relay Set — THE killer feature */}
+          <div className="bg-gradient-to-br from-primary/10 via-violet-500/5 to-transparent border border-primary/20 rounded-2xl p-6 relative overflow-hidden">
+            <div className="absolute top-3 right-3">
+              <span className="text-xs bg-primary/15 text-primary border border-primary/25 px-2 py-0.5 rounded-full font-bold animate-pulse">NEW</span>
+            </div>
             <div className="flex items-start gap-4">
-              <div className="w-12 h-12 bg-violet-500/15 rounded-xl flex items-center justify-center flex-shrink-0">
-                <Sparkles className="w-6 h-6 text-violet-500" />
+              <div className="w-12 h-12 bg-primary/15 rounded-xl flex items-center justify-center flex-shrink-0">
+                <Wrench className="w-6 h-6 text-primary" />
               </div>
               <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <h3 className="font-black text-lg">Find Your Perfect Relay</h3>
-                  <span className="text-xs bg-violet-500/15 text-violet-500 border border-violet-500/25 px-2 py-0.5 rounded-full font-bold">QUIZ</span>
-                </div>
+                <h3 className="font-black text-lg mb-1">Build My Relay Set</h3>
                 <p className="text-sm text-muted-foreground mb-4">
-                  Answer 3 quick questions and get personalized relay recommendations based on your use case, budget, and privacy needs.
+                  Answer a few questions and get an optimized relay set. Export as JSON, publish as kind:10002, or scan a QR code.
                 </p>
-                <Link to="/recommend">
-                  <Button size="sm" className="gap-2">
-                    <Sparkles className="w-3.5 h-3.5" />
-                    Take the Quiz
+                <Link to="/build">
+                  <Button size="sm" className="gap-2 glow-primary-sm">
+                    <Wrench className="w-3.5 h-3.5" />
+                    Build My Set
                   </Button>
                 </Link>
               </div>
             </div>
           </div>
 
-          {/* Software Leaderboard */}
-          <div className="bg-gradient-to-br from-amber-500/10 via-orange-500/5 to-transparent border border-amber-500/20 rounded-2xl p-6">
+          {/* Compare Relays */}
+          <div className="bg-gradient-to-br from-blue-500/10 via-cyan-500/5 to-transparent border border-blue-500/20 rounded-2xl p-6 relative overflow-hidden">
+            <div className="absolute top-3 right-3">
+              <span className="text-xs bg-blue-500/15 text-blue-500 border border-blue-500/25 px-2 py-0.5 rounded-full font-bold animate-pulse">NEW</span>
+            </div>
             <div className="flex items-start gap-4">
-              <div className="w-12 h-12 bg-amber-500/15 rounded-xl flex items-center justify-center flex-shrink-0">
-                <BarChart3 className="w-6 h-6 text-amber-500" />
+              <div className="w-12 h-12 bg-blue-500/15 rounded-xl flex items-center justify-center flex-shrink-0">
+                <GitCompareArrows className="w-6 h-6 text-blue-500" />
               </div>
               <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <h3 className="font-black text-lg">Relay Software</h3>
-                  <span className="text-xs bg-amber-500/15 text-amber-500 border border-amber-500/25 px-2 py-0.5 rounded-full font-bold">LEADERBOARD</span>
-                </div>
+                <h3 className="font-black text-lg mb-1">Compare Relays</h3>
                 <p className="text-sm text-muted-foreground mb-4">
-                  Which relay software is most popular? Compare strfry, nostr-rs-relay, khatru, and more by relay count, uptime, and NIP support.
+                  Side-by-side comparison of up to 4 relays. Compare uptime, latency, NIPs, limits, health scores, and more.
                 </p>
-                <Link to="/software">
-                  <Button size="sm" variant="outline" className="gap-2">
-                    <BarChart3 className="w-3.5 h-3.5" />
-                    View Leaderboard
+                <Link to="/compare">
+                  <Button size="sm" variant="outline" className="gap-2 border-blue-500/30 text-blue-500 hover:bg-blue-500/10">
+                    <GitCompareArrows className="w-3.5 h-3.5" />
+                    Compare Now
                   </Button>
                 </Link>
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Recommender + Software + Explore */}
+      <section className="container mx-auto max-w-7xl px-4 py-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Relay Recommender */}
+          <div className="bg-gradient-to-br from-violet-500/10 via-pink-500/5 to-transparent border border-violet-500/20 rounded-2xl p-6">
+            <div className="w-10 h-10 bg-violet-500/15 rounded-xl flex items-center justify-center mb-3">
+              <Sparkles className="w-5 h-5 text-violet-500" />
+            </div>
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="font-bold">Quick Quiz</h3>
+              <span className="text-[10px] bg-violet-500/15 text-violet-500 border border-violet-500/25 px-1.5 py-0.5 rounded-full font-bold">QUIZ</span>
+            </div>
+            <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
+              3 questions to find your perfect relay.
+            </p>
+            <Link to="/recommend">
+              <Button size="sm" variant="ghost" className="gap-1.5 text-xs text-violet-500 hover:text-violet-500 hover:bg-violet-500/10 p-0 h-auto">
+                Take the Quiz <ArrowRight className="w-3 h-3" />
+              </Button>
+            </Link>
+          </div>
+
+          {/* Software Leaderboard */}
+          <div className="bg-gradient-to-br from-amber-500/10 via-orange-500/5 to-transparent border border-amber-500/20 rounded-2xl p-6">
+            <div className="w-10 h-10 bg-amber-500/15 rounded-xl flex items-center justify-center mb-3">
+              <BarChart3 className="w-5 h-5 text-amber-500" />
+            </div>
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="font-bold">Relay Software</h3>
+              <span className="text-[10px] bg-amber-500/15 text-amber-500 border border-amber-500/25 px-1.5 py-0.5 rounded-full font-bold">STATS</span>
+            </div>
+            <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
+              Which software powers the network?
+            </p>
+            <Link to="/software">
+              <Button size="sm" variant="ghost" className="gap-1.5 text-xs text-amber-500 hover:text-amber-500 hover:bg-amber-500/10 p-0 h-auto">
+                View Leaderboard <ArrowRight className="w-3 h-3" />
+              </Button>
+            </Link>
+          </div>
+
+          {/* Explore */}
+          <div className="bg-gradient-to-br from-emerald-500/10 via-teal-500/5 to-transparent border border-emerald-500/20 rounded-2xl p-6">
+            <div className="w-10 h-10 bg-emerald-500/15 rounded-xl flex items-center justify-center mb-3">
+              <Compass className="w-5 h-5 text-emerald-500" />
+            </div>
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="font-bold">Explore</h3>
+              <span className="text-[10px] bg-emerald-500/15 text-emerald-500 border border-emerald-500/25 px-1.5 py-0.5 rounded-full font-bold">CURATED</span>
+            </div>
+            <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
+              Curated collections: fastest, newest, best for DMs, and more.
+            </p>
+            <Link to="/explore">
+              <Button size="sm" variant="ghost" className="gap-1.5 text-xs text-emerald-500 hover:text-emerald-500 hover:bg-emerald-500/10 p-0 h-auto">
+                Explore Relays <ArrowRight className="w-3 h-3" />
+              </Button>
+            </Link>
           </div>
         </div>
       </section>
@@ -462,17 +524,23 @@ export function HomePage() {
           <div className="absolute inset-0 bg-primary/5 rounded-3xl blur-3xl" />
           <div className="relative bg-card/60 border border-primary/20 rounded-3xl p-10 backdrop-blur-sm">
             <div className="w-14 h-14 bg-primary/15 rounded-2xl flex items-center justify-center mx-auto mb-5">
-              <Radio className="w-7 h-7 text-primary" />
+              <Wrench className="w-7 h-7 text-primary" />
             </div>
-            <h2 className="text-3xl font-black mb-3">Ready to find your relay?</h2>
+            <h2 className="text-3xl font-black mb-3">Build your perfect relay set</h2>
             <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-              Explore our full directory with advanced filters to find the perfect relay for your Nostr journey.
+              Answer a few questions and we'll generate an optimized relay list you can export and use anywhere.
             </p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              <Link to="/relays">
+              <Link to="/build">
                 <Button size="lg" className="gap-2 font-semibold glow-primary-sm">
-                  <Zap className="w-4 h-4" />
-                  Explore All Relays
+                  <Wrench className="w-4 h-4" />
+                  Build My Relay Set
+                </Button>
+              </Link>
+              <Link to="/explore">
+                <Button size="lg" variant="outline" className="gap-2">
+                  <Compass className="w-4 h-4" />
+                  Explore Relays
                 </Button>
               </Link>
               <Link to="/submit">
