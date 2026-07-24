@@ -212,7 +212,7 @@
 /* ─── Leaflet Map Styles (minimal, avoids default image assets) ───────────── */
 
 .leaflet-container {
-  background: hsl(var(--muted));
+  background: #1a1d29;
   outline: none;
 }
 

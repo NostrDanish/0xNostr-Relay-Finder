@@ -9,16 +9,16 @@
  * - Bounds tracking and selected-relay highlighting
  */
 
-import { useMemo, useRef, useState, useEffect, useCallback } from 'react';
+import { useMemo, useRef, useState, useEffect } from 'react';
 import { MapContainer, TileLayer, CircleMarker, Popup, useMap, useMapEvents, Tooltip } from 'react-leaflet';
 import type { LatLngTuple, LatLngBounds } from 'leaflet';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Radio, Wifi, TrendingUp, Shield, Zap, Droplets, Lock, Globe2, Users, Activity } from 'lucide-react';
+import { ArrowRight, Radio } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import type { LiveRelayRecord } from '@/hooks/useLiveRelayStore';
 import { decodeGeohash } from '@/hooks/useNIP66Monitor';
-import { relayUrlToId, shortenUrl, formatLatency, cn } from '@/lib/utils';
+import { relayUrlToId, shortenUrl, cn } from '@/lib/utils';
 
 // ─── Map positioning ────────────────────────────────────────────────────────
 
@@ -375,8 +375,8 @@ export function RelayMap({ relays, selectedRelayUrl, onShowNearby, height = '600
         className="z-0"
       >
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
         />
         <MapStateController onZoomChange={setZoom} onBoundsChange={setBounds} />
         <MapReadyController />

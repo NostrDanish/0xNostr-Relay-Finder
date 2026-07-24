@@ -13,7 +13,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useSeoMeta } from '@unhead/react';
 import {
-  Globe2, MapPin, Radio, Filter, Search, CheckCircle2,
+  Globe2, MapPin, Radio, Wifi, Filter, Search, CheckCircle2,
   XCircle, AlertCircle, Layers,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
