@@ -15,6 +15,8 @@ object Settings {
     //   - 27235 NIP-98 HTTP auth (HTTP Authorization header artifact)
     val DEFAULT_REJECTED_KINDS = setOf(13, 9734, 22242, 24242, 27235)
 
+    val DEFAULT_AGGREGATOR_KINDS = setOf(0, 1, 3, 5, 6, 7, 1111, 10000, 10002, 30023)
+
     val DEFAULT_AGGREGATOR_SOURCE_RELAYS = setOf(
         "wss://aggr.nostr.land/",
     )
@@ -97,7 +99,7 @@ object Settings {
 
     var relayAggregatorEnabled = false
     var aggregatorPubkey = ""
-    var relayAggregatorKinds: Set<Int> = setOf(0, 1, 3, 5, 6, 7, 1111, 10000, 10002, 30023)
+    var relayAggregatorKinds: Set<Int> = DEFAULT_AGGREGATOR_KINDS
     var relayAggregatorRefreshMinutes = 60
     var relayAggregatorIncludeTagged = true
     var relayAggregatorLastSync: Long = 0L
@@ -172,7 +174,7 @@ object Settings {
         blockedIps = java.util.concurrent.ConcurrentHashMap()
         relayAggregatorEnabled = false
         aggregatorPubkey = ""
-        relayAggregatorKinds = setOf(0, 1, 3, 5, 6, 7, 1111, 10000, 10002, 30023)
+        relayAggregatorKinds = DEFAULT_AGGREGATOR_KINDS
         relayAggregatorRefreshMinutes = 60
         relayAggregatorIncludeTagged = true
         relayAggregatorLastSync = 0L
