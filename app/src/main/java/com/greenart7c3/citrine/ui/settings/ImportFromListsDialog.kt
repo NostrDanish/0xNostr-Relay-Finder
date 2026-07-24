@@ -79,12 +79,14 @@ fun ImportFromListsDialog(
     val signer = remember(signerPubkey, signerPackage) {
         NostrSignerExternal(signerPubkey, signerPackage, contentResolver = context.contentResolver)
     }
+    val signRequestRejectedMsg = stringResource(R.string.sign_request_rejected)
+    val noSignerMsg = stringResource(R.string.make_sure_the_signer_application_has_authorized_this_transaction)
 
     val decryptLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult(),
     ) { result ->
         if (result.resultCode != Activity.RESULT_OK) {
-            Toast.makeText(context, context.getString(R.string.sign_request_rejected), Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, signRequestRejectedMsg, Toast.LENGTH_SHORT).show()
         } else {
             result.data?.let { coroutineScope.launch(Dispatchers.IO) { signer.newResponse(it) } }
         }
@@ -100,7 +102,7 @@ fun ImportFromListsDialog(
                 coroutineScope.launch {
                     Toast.makeText(
                         context,
-                        context.getString(R.string.make_sure_the_signer_application_has_authorized_this_transaction),
+                        noSignerMsg,
                         Toast.LENGTH_LONG,
                     ).show()
                 }

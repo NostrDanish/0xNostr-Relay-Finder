@@ -62,6 +62,8 @@ fun AccessControlSettingsScreen(
     val clipboardManager = LocalClipboard.current
     val invalidKeyMsg = stringResource(R.string.invalid_key)
     val invalidKindMsg = stringResource(R.string.invalid_kind)
+    val signRequestRejectedMsg = stringResource(R.string.sign_request_rejected)
+    val noSignerMsg = stringResource(R.string.no_external_signer_installed)
 
     Surface(modifier) {
         var allowedPubKeys by remember { mutableStateOf(Settings.allowedPubKeys) }
@@ -81,7 +83,7 @@ fun AccessControlSettingsScreen(
             contract = ActivityResultContracts.StartActivityForResult(),
         ) { result ->
             if (result.resultCode != Activity.RESULT_OK) {
-                Toast.makeText(context, context.getString(R.string.sign_request_rejected), Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, signRequestRejectedMsg, Toast.LENGTH_SHORT).show()
                 importTarget = null
             } else {
                 result.data?.let { data ->
@@ -123,7 +125,7 @@ fun AccessControlSettingsScreen(
                 importLauncher.launch(intent)
             } catch (e: Exception) {
                 Log.d(Citrine.TAG, e.message ?: "", e)
-                Toast.makeText(context, context.getString(R.string.no_external_signer_installed), Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, noSignerMsg, Toast.LENGTH_SHORT).show()
                 importTarget = null
             }
         }
