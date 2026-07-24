@@ -354,8 +354,8 @@ export function RelayMap({ relays, selectedRelayUrl, onShowNearby, height = '600
           }}
         >
           <WorldMapSvg
-            className="absolute inset-0 w-full h-full text-[#1e2a4a]"
-            landColor="currentColor"
+            className="absolute inset-0 w-full h-full"
+            landColor="rgba(255,255,255,0.06)"
           />
 
           {/* Markers & clusters, positioned absolutely by percent */}
