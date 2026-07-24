@@ -54,6 +54,7 @@ export function Footer() {
           <div className="space-y-3">
             <h4 className="text-sm font-semibold">Discover</h4>
             <ul className="space-y-2 text-sm text-muted-foreground">
+              <li><Link to="/atlas" className="hover:text-foreground transition-colors">Nostr Atlas</Link></li>
               <li><Link to="/explore" className="hover:text-foreground transition-colors">Explore Relays</Link></li>
               <li><Link to="/relays" className="hover:text-foreground transition-colors">Full Directory</Link></li>
               <li><Link to="/build" className="hover:text-foreground transition-colors">Build My Relay Set</Link></li>

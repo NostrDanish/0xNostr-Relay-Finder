@@ -320,6 +320,337 @@ function DiagnosticCard({ score, grade, issues }: { score: number; grade: string
   );
 }
 
+// ─── Privacy Check ──────────────────────────────────────────────────────────
+
+interface PrivacyCheckItem {
+  label: string;
+  status: 'ok' | 'warning' | 'critical' | 'info';
+  description: string;
+  suggestion?: string;
+}
+
+const CENTRALIZED_HOSTS = [
+  'googleusercontent.com',
+  'googleapis.com',
+  'cloudfront.net',
+  'cloudflare.com',
+  'imgur.com',
+  'twimg.com',
+  'pbs.twimg.com',
+  'media.licdn.com',
+  'pinimg.com',
+  'redd.it',
+  'fbcdn.net',
+  'cdninstagram.com',
+  'wp.com',
+  'githubusercontent.com',
+  'discordapp.com',
+  'cdn.discordapp.com',
+];
+
+function isCentralizedUrl(url?: string): boolean {
+  if (!url) return false;
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return CENTRALIZED_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
+  } catch {
+    return false;
+  }
+}
+
+function PrivacyCheckCard({
+  pubkey,
+  relays,
+  relayMap,
+}: {
+  pubkey: string;
+  relays: { url: string; read: boolean; write: boolean }[];
+  relayMap: Map<string, LiveRelayRecord>;
+}) {
+  const author = useAuthor(pubkey);
+  const meta = author.data?.metadata;
+
+  const { score, items, suggestions } = useMemo(() => {
+    const items: PrivacyCheckItem[] = [];
+    const suggestions: string[] = [];
+    let score = 100;
+
+    // 1. NIP-05 identity
+    if (meta?.nip05) {
+      items.push({
+        label: 'NIP-05 verified identity',
+        status: 'ok',
+        description: meta.nip05,
+      });
+      score += Math.min(score, 100); // already counted below
+    } else {
+      items.push({
+        label: 'No NIP-05 identifier',
+        status: 'warning',
+        description: 'A NIP-05 address makes your profile easier to find and verify.',
+        suggestion: 'Set up a NIP-05 address like name@yourdomain.com',
+      });
+      score -= 10;
+      suggestions.push('Set up a NIP-05 identifier');
+    }
+
+    // 2. Lightning address
+    if (meta?.lud16 || meta?.lud06) {
+      items.push({
+        label: 'Lightning address configured',
+        status: 'ok',
+        description: meta?.lud16 ?? 'LNURL compatible',
+      });
+    } else {
+      items.push({
+        label: 'No Lightning address',
+        status: 'info',
+        description: 'Zaps are easier with a configured Lightning address.',
+        suggestion: 'Add a Lightning address to receive zaps',
+      });
+      score -= 3;
+    }
+
+    // 3. Profile picture hosting
+    if (meta?.picture) {
+      items.push({
+        label: 'Profile picture',
+        status: isCentralizedUrl(meta.picture) ? 'warning' : 'ok',
+        description: isCentralizedUrl(meta.picture)
+          ? 'Hosted on a centralized CDN.'
+          : 'Not on a known centralized host.',
+        suggestion: isCentralizedUrl(meta.picture)
+          ? 'Consider hosting images on your own domain or Blossom/IPFS.'
+          : undefined,
+      });
+      if (isCentralizedUrl(meta.picture)) {
+        score -= 8;
+        suggestions.push('Host profile picture on your own domain or Blossom');
+      }
+    } else {
+      items.push({
+        label: 'No profile picture',
+        status: 'info',
+        description: 'A profile picture helps recognition.',
+      });
+      score -= 2;
+    }
+
+    // 4. Banner hosting
+    if (meta?.banner) {
+      items.push({
+        label: 'Profile banner',
+        status: isCentralizedUrl(meta.banner) ? 'warning' : 'ok',
+        description: isCentralizedUrl(meta.banner)
+          ? 'Hosted on a centralized CDN.'
+          : 'Not on a known centralized host.',
+        suggestion: isCentralizedUrl(meta.banner)
+          ? 'Consider hosting banner on your own domain or Blossom/IPFS.'
+          : undefined,
+      });
+      if (isCentralizedUrl(meta.banner)) {
+        score -= 5;
+        suggestions.push('Host banner on your own domain or Blossom');
+      }
+    }
+
+    // 5. Metadata completeness
+    if (meta?.name && meta?.about && meta?.picture) {
+      items.push({
+        label: 'Complete profile metadata',
+        status: 'ok',
+        description: 'Name, about, and picture are set.',
+      });
+    } else {
+      const missing = [
+        !meta?.name && 'name',
+        !meta?.about && 'about',
+        !meta?.picture && 'picture',
+      ].filter(Boolean);
+      items.push({
+        label: 'Incomplete profile metadata',
+        status: 'info',
+        description: `Missing: ${missing.join(', ')}`,
+        suggestion: 'Fill out your profile metadata for better discoverability.',
+      });
+      score -= 4;
+    }
+
+    // 6. Relay redundancy
+    const uniqueHosts = new Set(relays.map((r) => {
+      try { return new URL(r.url).hostname; } catch { return r.url; }
+    }));
+    if (relays.length === 0) {
+      items.push({
+        label: 'No relay list',
+        status: 'critical',
+        description: 'No NIP-65 relay list found.',
+        suggestion: 'Publish a kind:10002 relay list.',
+      });
+      score -= 30;
+      suggestions.push('Publish a NIP-65 relay list');
+    } else if (relays.length < 3) {
+      items.push({
+        label: 'Low relay redundancy',
+        status: 'warning',
+        description: `Only ${relays.length} relay${relays.length > 1 ? 's' : ''} configured.`,
+        suggestion: 'Use at least 3-5 relays for redundancy.',
+      });
+      score -= 10;
+      suggestions.push('Add more relays for redundancy');
+    } else {
+      items.push({
+        label: 'Relay redundancy',
+        status: 'ok',
+        description: `${relays.length} relays across ${uniqueHosts.size} hosts.`,
+      });
+    }
+
+    // 7. Read / Write balance
+    const reads = relays.filter((r) => r.read).length;
+    const writes = relays.filter((r) => r.write).length;
+    if (writes === 0) {
+      items.push({
+        label: 'No write relays',
+        status: 'critical',
+        description: 'Your events cannot be published.',
+        suggestion: 'Mark at least one relay as write-enabled.',
+      });
+      score -= 15;
+      suggestions.push('Configure at least one write relay');
+    } else if (reads === 0) {
+      items.push({
+        label: 'No read relays',
+        status: 'warning',
+        description: 'Others may not know where to send events for you.',
+        suggestion: 'Mark at least one relay as read-enabled.',
+      });
+      score -= 10;
+      suggestions.push('Configure at least one read relay');
+    } else {
+      items.push({
+        label: 'Read/write configured',
+        status: 'ok',
+        description: `${reads} read, ${writes} write relay${writes > 1 ? 's' : ''}.`,
+      });
+    }
+
+    // 8. Geographic / host diversity
+    const countries = new Set(
+      relays
+        .map((r) => relayMap.get(r.url)?.countryCode)
+        .filter(Boolean)
+    );
+    if (relays.length >= 3 && countries.size <= 1) {
+      items.push({
+        label: 'Low geographic diversity',
+        status: 'warning',
+        description: 'All relays appear to be in the same country.',
+        suggestion: 'Add relays in different regions.',
+      });
+      score -= 5;
+      suggestions.push('Add relays in different geographic regions');
+    }
+
+    // 9. Avoid relying solely on public/free relays? — informational
+    const authRelays = relays.filter((r) => {
+      const live = relayMap.get(r.url);
+      return live?.nip11?.limitation?.auth_required || live?.nip11?.limitation?.payment_required;
+    });
+    if (relays.length > 0 && authRelays.length === relays.length) {
+      items.push({
+        label: 'All relays require auth or payment',
+        status: 'info',
+        description: 'This limits reach but may improve privacy.',
+        suggestion: 'Consider adding one public relay for broader reach.',
+      });
+    }
+
+    score = Math.max(0, Math.min(100, score));
+    return { score, items, suggestions };
+  }, [meta, relays, relayMap]);
+
+  const gradeColors: Record<string, string> = {
+    high: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30',
+    medium: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30',
+    low: 'text-red-500 bg-red-500/10 border-red-500/30',
+  };
+
+  const statusIcon = {
+    ok: <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />,
+    warning: <AlertTriangle className="w-4 h-4 text-yellow-500 flex-shrink-0" />,
+    critical: <XCircle className="w-4 h-4 text-red-500 flex-shrink-0" />,
+    info: <Info className="w-4 h-4 text-blue-500 flex-shrink-0" />,
+  };
+
+  const statusBg = {
+    ok: 'bg-emerald-500/5 border-emerald-500/20',
+    warning: 'bg-yellow-500/5 border-yellow-500/20',
+    critical: 'bg-red-500/5 border-red-500/20',
+    info: 'bg-blue-500/5 border-blue-500/20',
+  };
+
+  const level = score >= 80 ? 'high' : score >= 60 ? 'medium' : 'low';
+  const label = score >= 80 ? 'Strong' : score >= 60 ? 'Moderate' : 'Needs Work';
+
+  return (
+    <Card className="border-border/60">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Shield className="w-4 h-4 text-primary" />
+          Privacy Check
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-center gap-6 mb-6">
+          <div className={cn('w-16 h-16 rounded-2xl border-2 flex items-center justify-center', gradeColors[level])}>
+            <span className="text-3xl font-black">{score}</span>
+          </div>
+          <div>
+            <div className="text-sm font-medium text-muted-foreground">Privacy Score</div>
+            <div className={cn('text-2xl font-black', level === 'high' ? 'text-emerald-500' : level === 'medium' ? 'text-yellow-500' : 'text-red-500')}>
+              {label}
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-2 mb-5">
+          {items.map((item, i) => (
+            <div key={i} className={cn('border rounded-lg px-3 py-2.5', statusBg[item.status])}>
+              <div className="flex items-start gap-2">
+                {statusIcon[item.status]}
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold">{item.label}</div>
+                  <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
+                  {item.suggestion && (
+                    <p className="text-xs text-primary mt-1">Suggestion: {item.suggestion}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {suggestions.length > 0 && (
+          <div className="bg-muted/40 rounded-lg p-3">
+            <h4 className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-1.5">
+              <Lightbulb className="w-3 h-3" /> Top Suggestions
+            </h4>
+            <ul className="space-y-1">
+              {suggestions.slice(0, 4).map((s, i) => (
+                <li key={i} className="text-xs flex items-start gap-2">
+                  <Plus className="w-3 h-3 text-primary flex-shrink-0 mt-0.5" />
+                  <span>{s}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function SuggestedRelays({ currentRelayUrls, liveRelays }: { currentRelayUrls: Set<string>; liveRelays: LiveRelayRecord[] }) {
   // Find relays not in the user's list that are online, free, high uptime
   const suggestions = useMemo(() => {
@@ -536,10 +867,15 @@ export function LookupPage() {
             </Card>
           </div>
 
-          {/* Diagnostic */}
-          {diagnostics && (
-            <DiagnosticCard score={diagnostics.score} grade={diagnostics.grade} issues={diagnostics.issues} />
-          )}
+          {/* Diagnostic + Privacy Check */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {diagnostics && (
+              <DiagnosticCard score={diagnostics.score} grade={diagnostics.grade} issues={diagnostics.issues} />
+            )}
+            {lookupResult && (
+              <PrivacyCheckCard pubkey={lookupResult.pubkey} relays={allRelays} relayMap={relayMap} />
+            )}
+          </div>
 
           {/* Relay list */}
           <Card className="border-border/60">

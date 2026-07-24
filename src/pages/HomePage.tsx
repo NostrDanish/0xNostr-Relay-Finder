@@ -403,31 +403,26 @@ export function HomePage() {
         </div>
       </section>
 
-      {/* Build + Compare — Hero tools */}
+      {/* Build + Compare + Atlas — Hero tools */}
       <section className="container mx-auto max-w-7xl px-4 py-8">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Build My Relay Set — THE killer feature */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Build My Relay Set */}
           <div className="bg-gradient-to-br from-primary/10 via-violet-500/5 to-transparent border border-primary/20 rounded-2xl p-6 relative overflow-hidden">
             <div className="absolute top-3 right-3">
               <span className="text-xs bg-primary/15 text-primary border border-primary/25 px-2 py-0.5 rounded-full font-bold animate-pulse">NEW</span>
             </div>
-            <div className="flex items-start gap-4">
-              <div className="w-12 h-12 bg-primary/15 rounded-xl flex items-center justify-center flex-shrink-0">
-                <Wrench className="w-6 h-6 text-primary" />
-              </div>
-              <div className="flex-1">
-                <h3 className="font-black text-lg mb-1">Build My Relay Set</h3>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Answer a few questions and get an optimized relay set. Export as JSON, publish as kind:10002, or scan a QR code.
-                </p>
-                <Link to="/build">
-                  <Button size="sm" className="gap-2 glow-primary-sm">
-                    <Wrench className="w-3.5 h-3.5" />
-                    Build My Set
-                  </Button>
-                </Link>
-              </div>
+            <div className="w-12 h-12 bg-primary/15 rounded-xl flex items-center justify-center mb-3">
+              <Wrench className="w-6 h-6 text-primary" />
             </div>
+            <h3 className="font-black text-lg mb-1">Build My Relay Set</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              Answer a few questions and get an optimized relay set. Export as JSON, publish as kind:10002, or scan a QR code.
+            </p>
+            <Link to="/build">
+              <Button size="sm" className="gap-2 glow-primary-sm">
+                <Wrench className="w-3.5 h-3.5" /> Build My Set
+              </Button>
+            </Link>
           </div>
 
           {/* Compare Relays */}
@@ -435,23 +430,37 @@ export function HomePage() {
             <div className="absolute top-3 right-3">
               <span className="text-xs bg-blue-500/15 text-blue-500 border border-blue-500/25 px-2 py-0.5 rounded-full font-bold animate-pulse">NEW</span>
             </div>
-            <div className="flex items-start gap-4">
-              <div className="w-12 h-12 bg-blue-500/15 rounded-xl flex items-center justify-center flex-shrink-0">
-                <GitCompareArrows className="w-6 h-6 text-blue-500" />
-              </div>
-              <div className="flex-1">
-                <h3 className="font-black text-lg mb-1">Compare Relays</h3>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Side-by-side comparison of up to 4 relays. Compare uptime, latency, NIPs, limits, health scores, and more.
-                </p>
-                <Link to="/compare">
-                  <Button size="sm" variant="outline" className="gap-2 border-blue-500/30 text-blue-500 hover:bg-blue-500/10">
-                    <GitCompareArrows className="w-3.5 h-3.5" />
-                    Compare Now
-                  </Button>
-                </Link>
-              </div>
+            <div className="w-12 h-12 bg-blue-500/15 rounded-xl flex items-center justify-center mb-3">
+              <GitCompareArrows className="w-6 h-6 text-blue-500" />
             </div>
+            <h3 className="font-black text-lg mb-1">Compare Relays</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              Side-by-side comparison of up to 4 relays. Compare uptime, latency, NIPs, limits, health scores, and more.
+            </p>
+            <Link to="/compare">
+              <Button size="sm" variant="outline" className="gap-2 border-blue-500/30 text-blue-500 hover:bg-blue-500/10">
+                <GitCompareArrows className="w-3.5 h-3.5" /> Compare Now
+              </Button>
+            </Link>
+          </div>
+
+          {/* Nostr Atlas */}
+          <div className="bg-gradient-to-br from-emerald-500/10 via-teal-500/5 to-transparent border border-emerald-500/20 rounded-2xl p-6 relative overflow-hidden">
+            <div className="absolute top-3 right-3">
+              <span className="text-xs bg-emerald-500/15 text-emerald-500 border border-emerald-500/25 px-2 py-0.5 rounded-full font-bold animate-pulse">NEW</span>
+            </div>
+            <div className="w-12 h-12 bg-emerald-500/15 rounded-xl flex items-center justify-center mb-3">
+              <Globe2 className="w-6 h-6 text-emerald-500" />
+            </div>
+            <h3 className="font-black text-lg mb-1">Nostr Atlas</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              Interactive world map of every known relay. Green for healthy, yellow for slow, red for offline. Filter and explore.
+            </p>
+            <Link to="/atlas">
+              <Button size="sm" variant="outline" className="gap-2 border-emerald-500/30 text-emerald-500 hover:bg-emerald-500/10">
+                <Globe2 className="w-3.5 h-3.5" /> Open Atlas
+              </Button>
+            </Link>
           </div>
         </div>
       </section>

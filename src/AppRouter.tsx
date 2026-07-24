@@ -17,6 +17,7 @@ import { RecommenderPage } from "@/pages/RecommenderPage";
 import { ComparePage } from "@/pages/ComparePage";
 import { BuildPage } from "@/pages/BuildPage";
 import { ExplorePage } from "@/pages/ExplorePage";
+import { AtlasPage } from "@/pages/AtlasPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { useLiveRelayStore } from "@/hooks/useLiveRelayStore";
 
@@ -52,6 +53,7 @@ function AppLayout() {
           <Route path="/compare" element={<ComparePage />} />
           <Route path="/build" element={<BuildPage />} />
           <Route path="/explore" element={<ExplorePage />} />
+          <Route path="/atlas" element={<AtlasPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </main>

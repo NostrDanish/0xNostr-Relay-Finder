@@ -6,6 +6,7 @@ import {
   CheckCircle2, XCircle, Loader2, ChevronRight, DollarSign,
   Download, Droplets, ThumbsUp, Wrench, MapPin, FileText,
   RefreshCw, FlaskConical, BarChart3, User, GitCompareArrows,
+  Globe,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -491,6 +492,12 @@ export function RelayDetailPage() {
           <Button variant="outline" size="sm" className="gap-2 text-xs">
             <GitCompareArrows className="w-3.5 h-3.5" />
             Compare
+          </Button>
+        </Link>
+        <Link to={`/atlas?relay=${encodeURIComponent(relay.url)}`}>
+          <Button variant="outline" size="sm" className="gap-2 text-xs">
+            <Globe className="w-3.5 h-3.5" />
+            Show on Atlas
           </Button>
         </Link>
       </div>

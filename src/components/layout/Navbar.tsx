@@ -23,11 +23,11 @@ import { genUserName } from "@/lib/genUserName";
 
 const NAV_LINKS = [
   { href: "/", label: "Home" },
+  { href: "/atlas", label: "Atlas" },
   { href: "/explore", label: "Explore" },
   { href: "/relays", label: "Directory" },
   { href: "/build", label: "Build Set" },
   { href: "/compare", label: "Compare" },
-  { href: "/lookup", label: "Lookup" },
   { href: "/software", label: "Software" },
 ];
 
