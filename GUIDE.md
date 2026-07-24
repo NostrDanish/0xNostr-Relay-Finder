@@ -136,7 +136,7 @@ See [NIP Verification](#4-nip-verification) below.
 
 ## 4. NIP Verification
 
-This is what makes 0xNostrRelays unique. Instead of trusting a relay's self-reported NIP support, we **actually test it**.
+This is what makes 0xRelays-Finder unique. Instead of trusting a relay's self-reported NIP support, we **actually test it**.
 
 ### How It Works
 
