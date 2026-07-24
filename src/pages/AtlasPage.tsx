@@ -236,7 +236,7 @@ export function AtlasPage() {
   });
 
   useSeoMeta({
-    title: 'Nostr Atlas — 0xNostrRelays',
+    title: 'Nostr Atlas — 0xRelay-Finder',
     description: 'Interactive world map of every known Nostr relay. Green for healthy, yellow for slow, red for offline. Explore the global relay network.',
   });
 

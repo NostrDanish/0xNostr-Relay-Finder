@@ -1,5 +1,5 @@
 {
-  "name": "0xNostrRelays",
+  "name": "0xRelay-Finder",
   "short_name": "0xRelays",
   "description": "Find the perfect Nostr relay in seconds",
   "start_url": "/",
@@ -8,8 +8,9 @@
   "theme_color": "#7c3aed",
   "icons": [
     {
-      "src": "/favicon.ico",
-      "sizes": "any"
+      "src": "/favicon.webp",
+      "sizes": "any",
+      "type": "image/webp"
     }
   ]
 }

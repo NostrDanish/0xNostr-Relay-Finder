@@ -23,7 +23,7 @@ const RelayMetadataSchema = z.object({
 
 // Zod schema for AppConfig validation
 const AppConfigSchema = z.object({
-  theme: z.enum(['dark', 'light', 'system']),
+  theme: z.enum(['dark', 'light', 'system', 'cyberpunk']),
   relayMetadata: RelayMetadataSchema,
 }) satisfies z.ZodType<AppConfig>;
 
@@ -69,6 +69,8 @@ export function AppProvider(props: AppProviderProps) {
   );
 }
 
+const THEME_CLASSES = ['light', 'dark', 'cyberpunk'];
+
 /**
  * Hook to apply theme changes to the document root
  */
@@ -76,7 +78,7 @@ function useApplyTheme(theme: Theme) {
   useEffect(() => {
     const root = window.document.documentElement;
 
-    root.classList.remove('light', 'dark');
+    root.classList.remove(...THEME_CLASSES);
 
     if (theme === 'system') {
       const systemTheme = window.matchMedia('(prefers-color-scheme: dark)')
@@ -99,7 +101,7 @@ function useApplyTheme(theme: Theme) {
 
     const handleChange = () => {
       const root = window.document.documentElement;
-      root.classList.remove('light', 'dark');
+      root.classList.remove(...THEME_CLASSES);
 
       const systemTheme = mediaQuery.matches ? 'dark' : 'light';
       root.classList.add(systemTheme);

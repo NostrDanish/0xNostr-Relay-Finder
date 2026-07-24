@@ -44,7 +44,7 @@ export interface RelaySubmissionPayload {
 }
 
 /**
- * Hook for submitting a new relay to the 0xNostrRelayFinder directory.
+ * Hook for submitting a new relay to the 0xRelay-Finder directory.
  *
  * Publishing strategy:
  * 1. Build a kind:30078 addressable event with d-tag = "0xrelay:<url>"

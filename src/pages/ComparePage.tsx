@@ -230,7 +230,7 @@ export function ComparePage() {
   );
 
   useSeoMeta({
-    title: 'Compare Relays — 0xNostrRelays',
+    title: 'Compare Relays — 0xRelay-Finder',
     description:
       'Side-by-side comparison of Nostr relays. Compare uptime, latency, NIPs, pricing, limits, and more.',
   });

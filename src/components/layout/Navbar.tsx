@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
-  Search, Menu, X, Zap, Moon, Sun, Radio,
+  Search, Menu, X, Zap, Moon, Sun, Radio, Terminal, Laptop, Check,
   LogOut, LayoutDashboard, User, ChevronDown,
   Crown, Shield, UserCog, Settings, ExternalLink,
 } from "lucide-react";
@@ -216,18 +216,18 @@ export function Navbar() {
         <div className="flex h-16 items-center justify-between gap-4">
           {/* Logo with 0xPrivacy breadcrumb */}
           <div className="flex items-center gap-2 flex-shrink-0">
-            <a href="https://0xPrivacy.online" target="_blank" rel="noopener noreferrer" className="group">
+            <Link to="/" className="group flex items-center gap-2">
               <div className="relative">
-                <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center group-hover:bg-primary/30 transition-colors">
-                  <Radio className="w-4 h-4 text-primary" />
-                </div>
+                <img
+                  src="/logo.webp"
+                  alt="0xRelay-Finder logo"
+                  className="w-8 h-8 rounded-lg object-contain group-hover:scale-105 transition-transform"
+                />
                 <div className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               </div>
-            </a>
-            <Link to="/" className="flex items-center gap-0 group">
               <span className="font-bold text-lg tracking-tight hidden sm:block">
                 <span className="gradient-text">0x</span>
-                <span className="text-foreground">NostrRelays</span>
+                <span className="text-foreground">Relay-Finder</span>
               </span>
             </Link>
             {/* Subtle desktop breadcrumb */}
@@ -307,14 +307,41 @@ export function Navbar() {
               </Button>
             )}
 
-            {/* Theme toggle */}
-            <Button
-              variant="ghost" size="icon" className="h-8 w-8"
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-              title="Toggle theme"
-            >
-              {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            </Button>
+            {/* Theme switcher */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8" title="Change theme">
+                  {theme === "dark" && <Moon className="w-4 h-4" />}
+                  {theme === "light" && <Sun className="w-4 h-4" />}
+                  {theme === "cyberpunk" && <Terminal className="w-4 h-4 text-emerald-500" />}
+                  {theme === "system" && <Laptop className="w-4 h-4" />}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuLabel className="text-xs text-muted-foreground">Theme</DropdownMenuLabel>
+                <DropdownMenuItem onClick={() => setTheme("light")} className="flex items-center gap-2 cursor-pointer">
+                  <Sun className="w-4 h-4" />
+                  <span className="flex-1">Light</span>
+                  {theme === "light" && <Check className="w-3.5 h-3.5" />}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setTheme("dark")} className="flex items-center gap-2 cursor-pointer">
+                  <Moon className="w-4 h-4" />
+                  <span className="flex-1">Dark</span>
+                  {theme === "dark" && <Check className="w-3.5 h-3.5" />}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setTheme("cyberpunk")} className="flex items-center gap-2 cursor-pointer">
+                  <Terminal className="w-4 h-4 text-emerald-500" />
+                  <span className="flex-1">Cyberpunk</span>
+                  {theme === "cyberpunk" && <Check className="w-3.5 h-3.5" />}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setTheme("system")} className="flex items-center gap-2 cursor-pointer">
+                  <Laptop className="w-4 h-4" />
+                  <span className="flex-1">System</span>
+                  {theme === "system" && <Check className="w-3.5 h-3.5" />}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
             {/* User menu or Find Relays CTA */}
             {user ? (

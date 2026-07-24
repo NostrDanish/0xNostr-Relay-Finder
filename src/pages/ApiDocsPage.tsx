@@ -265,8 +265,8 @@ function LiveTryItBox() {
 // ─── Main page ───────────────────────────────────────────────────────────────
 export function ApiDocsPage() {
   useSeoMeta({
-    title: 'Query via Nostr Protocol — 0xNostrRelays',
-    description: 'Query the 0xNostrRelays directory directly via the Nostr protocol. Connect to our relays over WebSocket and fetch relay submission events. No REST API — pure decentralised Nostr.',
+    title: 'Query via Nostr Protocol — 0xRelay-Finder',
+    description: 'Query the 0xRelay-Finder directory directly via the Nostr protocol. Connect to our relays over WebSocket and fetch relay submission events. No REST API — pure decentralised Nostr.',
   });
 
   const wsReqExample = `// Connect to our relay via WebSocket
@@ -393,7 +393,7 @@ ws.close()`;
           Query via Nostr Protocol
         </h1>
         <p className="text-muted-foreground text-lg max-w-2xl leading-relaxed mb-4">
-          0xNostrRelays stores all data as cryptographically signed Nostr events.
+          0xRelay-Finder stores all data as cryptographically signed Nostr events.
           There is no REST API — you connect directly to our relays over WebSocket
           and query events using the standard{' '}
           <a

@@ -718,7 +718,7 @@ export function LookupPage() {
   const { relays: liveRelays } = useLiveRelayStore();
 
   useSeoMeta({
-    title: 'npub Relay Diagnostic — 0xNostrRelays',
+    title: 'npub Relay Diagnostic — 0xRelay-Finder',
     description: "Diagnose any Nostr user's relay configuration. Find offline relays, missing coverage, and get better relay suggestions.",
   });
 

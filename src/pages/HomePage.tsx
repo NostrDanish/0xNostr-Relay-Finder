@@ -67,9 +67,9 @@ export function HomePage() {
   const TOP_RELAYS = useMemo(() => [...relays].sort((a, b) => b.uptimePercent30d - a.uptimePercent30d).slice(0, 6), [relays]);
 
   useSeoMeta({
-    title: "0xNostrRelays — Find the Perfect Nostr Relay",
+    title: "0xRelay-Finder — Find the Perfect Nostr Relay",
     description: `Discover and compare ${stats.totalRelays}+ Nostr relays. Search by uptime, price, use case, and location. Find the perfect relay for your Nostr setup.`,
-    ogTitle: "0xNostrRelays — Find the Perfect Nostr Relay",
+    ogTitle: "0xRelay-Finder — Find the Perfect Nostr Relay",
     ogDescription: "The most comprehensive Nostr relay directory. Compare relays by uptime, pricing, NIPs, and use cases.",
   });
 
@@ -273,7 +273,7 @@ export function HomePage() {
       <section className="bg-muted/20 border-y border-border/40 py-16">
         <div className="container mx-auto max-w-5xl px-4">
           <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold mb-3">Why Use 0xNostrRelays?</h2>
+            <h2 className="text-3xl font-bold mb-3">Why Use 0xRelay-Finder?</h2>
             <p className="text-muted-foreground max-w-xl mx-auto">
               We monitor hundreds of relays 24/7 so you don't have to. Make data-driven decisions for your Nostr setup.
             </p>

@@ -76,7 +76,7 @@ export function RelaysPage() {
   }, [relays, search, filters, activeNips, activeFeatures]);
 
   useSeoMeta({
-    title: "Relay Explorer — 0xNostrRelays",
+    title: "Relay Explorer — 0xRelay-Finder",
     description: "Browse and filter all Nostr relays. Compare uptime, pricing, NIPs, and use cases to find the best relay for you.",
   });
 

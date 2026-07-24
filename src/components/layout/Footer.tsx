@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Radio, Github, ExternalLink, Shield } from "lucide-react";
+import { Github, ExternalLink, Shield } from "lucide-react";
 
 export function Footer() {
   return (
@@ -9,12 +9,10 @@ export function Footer() {
           {/* Brand */}
           <div className="md:col-span-1 space-y-3">
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-primary/20 flex items-center justify-center">
-                <Radio className="w-3.5 h-3.5 text-primary" />
-              </div>
+              <img src="/logo.webp" alt="0xRelay-Finder logo" className="w-7 h-7 rounded-lg object-contain" />
               <span className="font-bold text-base">
                 <span className="gradient-text">0x</span>
-                <span>NostrRelays</span>
+                <span>Relay-Finder</span>
               </span>
             </div>
             <p className="text-xs text-muted-foreground leading-relaxed">
@@ -109,7 +107,7 @@ export function Footer() {
             >
               0xPrivacy.online
             </a>{" "}
-            · 0xNostrRelays. Built for the Nostr community.
+            · 0xRelay-Finder. Built for the Nostr community.
           </p>
           <div className="flex items-center gap-4">
             <a

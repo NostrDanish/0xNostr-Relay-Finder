@@ -145,7 +145,7 @@ export function ExplorePage() {
   const { relays, stats } = useLiveRelayStore();
 
   useSeoMeta({
-    title: 'Explore Relays — 0xNostrRelays',
+    title: 'Explore Relays — 0xRelay-Finder',
     description: 'Discover interesting Nostr relays. Browse the fastest, newest, most reliable, and best relays by category.',
   });
 

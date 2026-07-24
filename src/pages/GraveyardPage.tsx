@@ -136,7 +136,7 @@ export function GraveyardPage() {
   const [sort, setSort] = useState<SortKey>('recent');
 
   useSeoMeta({
-    title: 'Relay Graveyard — 0xNostrRelays',
+    title: 'Relay Graveyard — 0xRelay-Finder',
     description: 'A memorial to Nostr relays that have gone permanently offline. See which relays no longer respond and when they were last seen.',
   });
 

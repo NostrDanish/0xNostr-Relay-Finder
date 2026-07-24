@@ -461,7 +461,7 @@ function DecisionDialog({
 
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 export function DashboardPage() {
-  useSeoMeta({ title: 'Dashboard — 0xNostrRelays' });
+  useSeoMeta({ title: 'Dashboard — 0xRelay-Finder' });
 
   const { user, metadata } = useCurrentUser();
   const { role, isOwner, isMod, canApprove, canManageRoles, adminList, modList } = useAdminAccess();

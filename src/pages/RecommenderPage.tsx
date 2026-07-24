@@ -159,7 +159,7 @@ export function RecommenderPage() {
   const [answers, setAnswers] = useState<QuizAnswers>({ useCase: null, pricing: null, privacy: null });
 
   useSeoMeta({
-    title: 'Find the Best Relay for You - 0xNostrRelays',
+    title: 'Find the Best Relay for You - 0xRelay-Finder',
     description: 'Take a quick quiz to find the perfect Nostr relay for your needs. Personalized recommendations based on your use case, budget, and privacy requirements.',
   });
 

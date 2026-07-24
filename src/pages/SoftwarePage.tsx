@@ -182,7 +182,7 @@ export function SoftwarePage() {
   const { relays, stats: networkStats } = useLiveRelayStore();
 
   useSeoMeta({
-    title: 'Relay Software Leaderboard - 0xNostrRelays',
+    title: 'Relay Software Leaderboard - 0xRelay-Finder',
     description: 'Compare Nostr relay software implementations. See which relay software is most popular, reliable, and feature-rich.',
   });
 

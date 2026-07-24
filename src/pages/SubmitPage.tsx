@@ -38,8 +38,8 @@ function StepBadge({ n, active, done }: { n: number; active: boolean; done: bool
 
 export function SubmitPage() {
   useSeoMeta({
-    title: "Submit a Relay — 0xNostrRelays",
-    description: "Submit a new Nostr relay to the 0xNostrRelays directory. Submissions are published directly to Nostr using kind:30078.",
+    title: "Submit a Relay — 0xRelay-Finder",
+    description: "Submit a new Nostr relay to the 0xRelay-Finder directory. Submissions are published directly to Nostr using kind:30078.",
   });
 
   const { user } = useCurrentUser();

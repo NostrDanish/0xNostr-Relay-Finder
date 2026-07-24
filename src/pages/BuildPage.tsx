@@ -254,7 +254,7 @@ export function BuildPage() {
   const [publishedRelays, setPublishedRelays] = useState(false);
 
   useSeoMeta({
-    title: 'Build My Relay Set — 0xNostrRelays',
+    title: 'Build My Relay Set — 0xRelay-Finder',
     description: 'Answer a few questions and get an optimized Nostr relay set. Export as JSON, kind:10002 event, or QR code.',
   });
 
