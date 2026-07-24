@@ -44,11 +44,11 @@ export const APP_RELAY_URL = APP_RELAY_PRIMARY;
 // ─── App Identity (Owner) ─────────────────────────────────────────────────────
 /**
  * The app owner's Nostr pubkey (hex).
- * npub1v0602fyvxl92ks6qykydve2cxcxrctzps20pkp85qz23ejndtcus09xu47
+ * npub1mzyv84a27q0n3d2s6e3l3yzxw209gcz0ydc06d0pup07juptpqesemalsu
  * Has ALL permissions: approve/reject, add/remove admins & mods, manage directory.
  */
-export const OWNER_PUBKEY_HEX = '63f4f5248c37caab43402588d66558360c3c2c41829e1b04f400951cca6d5e39';
-export const OWNER_NPUB = 'npub1v0602fyvxl92ks6qykydve2cxcxrctzps20pkp85qz23ejndtcus09xu47';
+export const OWNER_PUBKEY_HEX = 'd888c3d7aaf01f38b550d663f89046729e54604f2370fd35e1e05fe9702b0833';
+export const OWNER_NPUB = 'npub1mzyv84a27q0n3d2s6e3l3yzxw209gcz0ydc06d0pup07juptpqesemalsu';
 
 /** Backwards compat alias */
 export const APP_PUBKEY_HEX = OWNER_PUBKEY_HEX;
