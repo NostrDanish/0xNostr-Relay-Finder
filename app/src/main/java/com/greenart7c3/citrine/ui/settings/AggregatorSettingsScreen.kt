@@ -287,6 +287,13 @@ fun AggregatorSettingsScreen(
                         },
                     )
                 }
+                item {
+                    TextButton(
+                        onClick = { aggregatorKinds = Settings.DEFAULT_AGGREGATOR_KINDS },
+                    ) {
+                        Text(stringResource(R.string.relay_aggregator_reset_defaults))
+                    }
+                }
                 if (aggregatorKinds.isEmpty()) {
                     item {
                         EmptyListHint(stringResource(R.string.relay_aggregator_kinds_empty_hint))
