@@ -223,6 +223,7 @@ data class NsiteInfo(
     val kind: Int = 0,
     val dTag: String = "",
     val displayName: String = "",
+    val description: String = "",
     val folderName: String = "",
     val aggregateHash: String = "",
     val autoUpdate: Boolean = false,

@@ -51,6 +51,16 @@ fun NsiteRow(
                     overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodyLarge,
                 )
+                if (nsite.description.isNotBlank()) {
+                    Text(
+                        nsite.description,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
                 Text(
                     "${nsite.folderName}.localhost:${Settings.port}",
                     maxLines = 1,

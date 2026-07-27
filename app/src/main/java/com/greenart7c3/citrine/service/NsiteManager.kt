@@ -82,6 +82,7 @@ object NsiteManager {
         val kind: Int,
         val dTag: String,
         val displayName: String,
+        val description: String,
         val authorName: String,
         val aggregateHash: String,
         val serverHints: List<String>,
@@ -131,6 +132,10 @@ object NsiteManager {
 
     /** The nsite's own human-readable name from the manifest `title` tag, if present. */
     private fun titleOf(ev: Event): String = ev.tags.firstOrNull { it.size >= 2 && it[0] == "title" }?.get(1)?.takeIf { it.isNotBlank() } ?: ""
+
+    /** The nsite's description/summary from the manifest, if present. */
+    private fun descriptionOf(ev: Event): String = ev.tags.firstOrNull { it.size >= 2 && it[0] == "description" }?.get(1)?.takeIf { it.isNotBlank() }
+        ?: ev.tags.firstOrNull { it.size >= 2 && it[0] == "summary" }?.get(1)?.takeIf { it.isNotBlank() } ?: ""
 
     /** Returns (urlPath, sha256) for every `path` tag. */
     private fun pathTagsOf(ev: Event): List<Pair<String, String>> = ev.tags.filter { it.size >= 3 && it[0] == "path" }.map { it[1] to it[2] }
@@ -219,6 +224,7 @@ object NsiteManager {
                     kind = ev.kind,
                     dTag = dTag,
                     displayName = name,
+                    description = descriptionOf(ev),
                     authorName = authorName,
                     aggregateHash = aggregateHashOf(ev),
                     serverHints = serverHintsOf(ev),
@@ -498,6 +504,7 @@ object NsiteManager {
             kind = kind,
             dTag = dTag,
             displayName = displayName,
+            description = descriptionOf(manifest),
             folderName = folderName,
             aggregateHash = aggregateHashOf(manifest),
             autoUpdate = autoUpdate,
