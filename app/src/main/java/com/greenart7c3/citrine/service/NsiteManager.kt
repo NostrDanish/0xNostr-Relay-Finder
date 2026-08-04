@@ -84,6 +84,7 @@ object NsiteManager {
         val displayName: String,
         val description: String,
         val authorName: String,
+        val authorPicture: String = "",
         val aggregateHash: String,
         val serverHints: List<String>,
         val iconUrl: String?,
@@ -182,6 +183,16 @@ object NsiteManager {
         }
     }
 
+    /** The author's avatar URL from their kind-0 metadata `picture` field, if present. */
+    private fun pictureUrlOf(metadata: Event?): String {
+        if (metadata == null) return ""
+        return try {
+            JacksonMapper.mapper.readTree(metadata.content).get("picture")?.asText().orEmpty()
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
     /** "nsite" + first 16 hex chars of sha256(address): a deterministic, hostname-safe slug. */
     private fun folderNameFor(address: String): String = "nsite" + sha256Hex(address.toByteArray()).take(16)
 
@@ -226,6 +237,7 @@ object NsiteManager {
                     displayName = name,
                     description = descriptionOf(ev),
                     authorName = authorName,
+                    authorPicture = pictureUrlOf(names[ev.pubKey]),
                     aggregateHash = aggregateHashOf(ev),
                     serverHints = serverHintsOf(ev),
                     iconUrl = iconUrlOf(ev),
