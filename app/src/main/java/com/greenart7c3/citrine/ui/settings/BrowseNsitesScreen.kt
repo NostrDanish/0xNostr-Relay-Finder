@@ -1,23 +1,36 @@
 package com.greenart7c3.citrine.ui.settings
 
+import android.content.Intent
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
@@ -33,12 +46,19 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
+import coil3.compose.SubcomposeAsyncImage
+import coil3.request.ImageRequest
 import com.greenart7c3.citrine.R
+import com.greenart7c3.citrine.server.Settings
 import com.greenart7c3.citrine.service.NsiteManager
 import com.greenart7c3.citrine.ui.components.NsiteIcon
 import kotlinx.coroutines.Dispatchers
@@ -127,13 +147,14 @@ fun BrowseNsitesScreen(
                                     val rowInstalling = installing?.takeIf { it.address == nsite.address }
                                     val nsiteInstalledMsg = stringResource(R.string.nsite_installed, nsite.displayName)
                                     val nsiteInstallFailedMsg = stringResource(R.string.nsite_install_failed, nsite.displayName)
-                                    val installLabel = stringResource(R.string.install_nsite)
-                                    val installedLabel = stringResource(R.string.installed)
-                                    OutlinedCard(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        enabled = !nsite.alreadyInstalled && installing == null,
-                                        onClick = {
-                                            if (nsite.alreadyInstalled || installing != null) return@OutlinedCard
+                                    var expanded by remember(nsite.address) { mutableStateOf(false) }
+                                    val installedNsite = remember(nsite.address, nsite.alreadyInstalled) {
+                                        Settings.nsites.firstOrNull { it.address == nsite.address }
+                                    }
+                                    var autoUpdate by remember(installedNsite) { mutableStateOf(installedNsite?.autoUpdate == true) }
+
+                                    val onInstall: () -> Unit = {
+                                        if (!nsite.alreadyInstalled && installing == null) {
                                             installing = InstallUiState(nsite.address, 0, 0)
                                             scope.launch(Dispatchers.IO) {
                                                 val result = NsiteManager.install(nsite) { downloaded, total ->
@@ -151,81 +172,176 @@ fun BrowseNsitesScreen(
                                                 // Refresh the list so the installed item is now flagged.
                                                 NsiteManager.discover()
                                             }
-                                        },
+                                        }
+                                    }
+
+                                    val authorLabel = nsite.authorName.ifBlank {
+                                        if (nsite.pubkey.length > 12) "${nsite.pubkey.take(8)}…${nsite.pubkey.takeLast(4)}" else nsite.pubkey
+                                    }
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
                                     ) {
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(horizontal = 16.dp, vertical = 12.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                        ) {
-                                            if (rowInstalling != null) {
-                                                Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) {
-                                                    if (rowInstalling.total > 0) {
-                                                        CircularProgressIndicator(
-                                                            progress = { rowInstalling.downloaded.toFloat() / rowInstalling.total },
-                                                            modifier = Modifier.size(28.dp),
-                                                        )
-                                                    } else {
-                                                        CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                                        AuthorAvatar(
+                                            pictureUrl = nsite.authorPicture.ifBlank { null },
+                                            authorName = authorLabel,
+                                        )
+                                        Text(
+                                            authorLabel,
+                                            modifier = Modifier.weight(1f).padding(start = 8.dp),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold,
+                                        )
+                                        Text(
+                                            "· ${relativeTimeShort(nsite.lastUpdated)}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                    OutlinedCard(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(16.dp),
+                                    ) {
+                                        Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                            ) {
+                                                NsiteIcon(
+                                                    model = nsite.iconUrl,
+                                                    monogram = nsite.displayName.firstOrNull()?.toString(),
+                                                    size = 48.dp,
+                                                )
+                                                Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
+                                                    Text(
+                                                        stringResource(R.string.nsite_badge),
+                                                        style = MaterialTheme.typography.labelMedium,
+                                                        color = MaterialTheme.colorScheme.primary,
+                                                    )
+                                                    Text(
+                                                        nsite.displayName,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis,
+                                                        style = MaterialTheme.typography.titleMedium,
+                                                        fontWeight = FontWeight.Bold,
+                                                    )
+                                                }
+                                                when {
+                                                    rowInstalling != null -> {
+                                                        Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                                                            if (rowInstalling.total > 0) {
+                                                                CircularProgressIndicator(
+                                                                    progress = { rowInstalling.downloaded.toFloat() / rowInstalling.total },
+                                                                    modifier = Modifier.size(28.dp),
+                                                                )
+                                                            } else {
+                                                                CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                                                            }
+                                                        }
+                                                    }
+                                                    nsite.alreadyInstalled -> {
+                                                        IconButton(onClick = {
+                                                            val enabled = !autoUpdate
+                                                            NsiteManager.setAutoUpdate(nsite.address, enabled)
+                                                            autoUpdate = enabled
+                                                        }) {
+                                                            Icon(
+                                                                imageVector = if (autoUpdate) Icons.Default.Star else Icons.Default.StarBorder,
+                                                                contentDescription = stringResource(R.string.auto_update),
+                                                                tint = if (autoUpdate) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                            )
+                                                        }
+                                                        FilledTonalButton(
+                                                            onClick = {
+                                                                if (installedNsite != null) {
+                                                                    val browserIntent = Intent(
+                                                                        Intent.ACTION_VIEW,
+                                                                        "http://${installedNsite.folderName}.localhost:${Settings.port}".toUri(),
+                                                                    )
+                                                                    context.startActivity(browserIntent)
+                                                                }
+                                                            },
+                                                        ) {
+                                                            Text(stringResource(R.string.open))
+                                                        }
+                                                    }
+                                                    else -> {
+                                                        FilledTonalButton(
+                                                            onClick = onInstall,
+                                                            enabled = installing == null,
+                                                        ) {
+                                                            Text(stringResource(R.string.install))
+                                                        }
                                                     }
                                                 }
-                                            } else {
-                                                NsiteIcon(model = nsite.iconUrl)
                                             }
-                                            Column(
-                                                modifier = Modifier
-                                                    .weight(1f)
-                                                    .padding(start = 12.dp),
-                                            ) {
+                                            if (nsite.description.isNotBlank()) {
                                                 Text(
-                                                    nsite.displayName,
-                                                    maxLines = 1,
+                                                    nsite.description,
+                                                    maxLines = 2,
                                                     overflow = TextOverflow.Ellipsis,
-                                                    style = MaterialTheme.typography.bodyLarge,
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    modifier = Modifier.padding(top = 12.dp),
                                                 )
-                                                if (nsite.description.isNotBlank()) {
+                                            }
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(top = 8.dp)
+                                                    .clickable { expanded = !expanded },
+                                                verticalAlignment = Alignment.CenterVertically,
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Shield,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier.size(20.dp),
+                                                )
+                                                Text(
+                                                    stringResource(R.string.nsite_details),
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier.padding(start = 8.dp),
+                                                )
+                                                Spacer(modifier = Modifier.weight(1f))
+                                                Icon(
+                                                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                )
+                                            }
+                                            AnimatedVisibility(visible = expanded) {
+                                                Column(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                                                    if (rowInstalling != null) {
+                                                        Text(
+                                                            if (rowInstalling.total > 0) {
+                                                                stringResource(R.string.nsite_installing_progress, rowInstalling.downloaded, rowInstalling.total)
+                                                            } else {
+                                                                stringResource(R.string.installing_nsite, nsite.displayName)
+                                                            },
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis,
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        )
+                                                    }
+                                                    if (nsite.authorName.isNotBlank()) {
+                                                        Text(
+                                                            stringResource(R.string.nsite_by_author, nsite.authorName),
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis,
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        )
+                                                    }
                                                     Text(
-                                                        nsite.description,
-                                                        maxLines = 2,
+                                                        nsite.address,
+                                                        maxLines = 1,
                                                         overflow = TextOverflow.Ellipsis,
                                                         style = MaterialTheme.typography.bodySmall,
                                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                        modifier = Modifier.padding(top = 2.dp),
-                                                    )
-                                                }
-                                                Text(
-                                                    when {
-                                                        rowInstalling != null && rowInstalling.total > 0 ->
-                                                            stringResource(R.string.nsite_installing_progress, rowInstalling.downloaded, rowInstalling.total)
-                                                        rowInstalling != null -> stringResource(R.string.installing_nsite, nsite.displayName)
-                                                        nsite.alreadyInstalled -> stringResource(R.string.nsite_already_installed)
-                                                        nsite.authorName.isNotBlank() -> stringResource(R.string.nsite_by_author, nsite.authorName)
-                                                        else -> nsite.address
-                                                    },
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis,
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                    modifier = Modifier.padding(top = 2.dp),
-                                                )
-                                            }
-                                            when {
-                                                rowInstalling != null -> {}
-                                                nsite.alreadyInstalled -> {
-                                                    Icon(
-                                                        Icons.Default.Check,
-                                                        contentDescription = installedLabel,
-                                                        tint = MaterialTheme.colorScheme.primary,
-                                                        modifier = Modifier.size(24.dp),
-                                                    )
-                                                }
-                                                else -> {
-                                                    Icon(
-                                                        Icons.Default.Download,
-                                                        contentDescription = installLabel,
-                                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                        modifier = Modifier.size(24.dp),
                                                     )
                                                 }
                                             }
@@ -238,5 +354,67 @@ fun BrowseNsitesScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun AuthorAvatar(
+    pictureUrl: String?,
+    authorName: String,
+) {
+    Box(
+        modifier = Modifier
+            .size(32.dp)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.secondaryContainer),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (pictureUrl == null) {
+            AvatarFallback(authorName)
+        } else {
+            SubcomposeAsyncImage(
+                model = ImageRequest.Builder(LocalContext.current).data(pictureUrl).build(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(32.dp),
+                loading = { AvatarFallback(authorName) },
+                error = { AvatarFallback(authorName) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun AvatarFallback(authorName: String) {
+    if (authorName.isNotBlank()) {
+        Text(
+            authorName.take(1).uppercase(),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
+        )
+    } else {
+        Icon(
+            imageVector = Icons.Default.Person,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+            modifier = Modifier.size(20.dp),
+        )
+    }
+}
+
+/** Compact relative timestamp ("now", "5m", "1h", "3d", "2w", "4mo", "1y") for the feed-style author header. */
+private fun relativeTimeShort(epochSeconds: Long): String {
+    val diffMillis = System.currentTimeMillis() - epochSeconds * 1000
+    val minutes = diffMillis / 60_000
+    val hours = diffMillis / 3_600_000
+    val days = diffMillis / 86_400_000
+    return when {
+        minutes < 1 -> "now"
+        minutes < 60 -> "${minutes}m"
+        hours < 24 -> "${hours}h"
+        days < 7 -> "${days}d"
+        days < 30 -> "${days / 7}w"
+        days < 365 -> "${days / 30}mo"
+        else -> "${days / 365}y"
     }
 }
