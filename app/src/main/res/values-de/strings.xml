@@ -195,6 +195,9 @@
     <string name="delete_banned_pubkey_events_message">Also delete all events stored from %1$s? They will be removed from the database when you apply changes. This cannot be undone.</string>
     <string name="nsites">Nsites</string>
     <string name="browse_nsites">Browse nsites</string>
+    <string name="open">Open</string>
+    <string name="nsite_badge">NSITE</string>
+    <string name="nsite_details">Details</string>
     <string name="check_for_updates">Check for updates</string>
     <string name="auto_update">Auto-update</string>
     <string name="update_now">Update now</string>
@@ -207,6 +210,9 @@
     <string name="nsite_install_failed">Failed to install %1$s</string>
     <string name="nsite_already_installed">Already installed</string>
     <string name="nsite_by_author">by %1$s</string>
+    <string name="install_nsite">Install nsite</string>
+    <string name="install">Install</string>
+    <string name="installed">Installed</string>
     <string name="nsite_update_available_notification">Update available for %1$s</string>
     <string name="nsite_relays">Nsite relays</string>
     <string name="nsite_relays_description">Relays queried to discover nsites. Leave empty to use the default relays.</string>
