@@ -111,6 +111,62 @@ export const KIND_MONITOR_ANNOUNCEMENT = 10166;
 export const KIND_RELAY_LIST = 10002;
 
 /**
+ * kind:1985 — NIP-32 Labeling
+ * Used for labeling relays with trust scores, categories, and quality assessments.
+ * The `L` tag defines the namespace, `l` tag carries the label value.
+ * Labels from trusted moderators are consumed and aggregated.
+ */
+export const KIND_LABEL = 1985;
+
+/**
+ * kind:30382 — NIP-85 Trusted Assertion (User)
+ * Used for WoT-based relay operator trust scoring.
+ */
+export const KIND_TRUSTED_ASSERTION_USER = 30382;
+
+/**
+ * kind:30384 — NIP-85 Trusted Assertion (Addressable Event)
+ * Used for WoT-based relay submission trust scoring.
+ */
+export const KIND_TRUSTED_ASSERTION_ADDRESSABLE = 30384;
+
+/**
+ * kind:30385 — NIP-85 Trusted Assertion (NIP-73 Identifier)
+ * Used for relay URL trust scoring.
+ */
+export const KIND_TRUSTED_ASSERTION_EXTERNAL = 30385;
+
+/**
+ * kind:10040 — NIP-85 Trusted Provider List
+ * Lists which trusted assertion providers a user follows.
+ */
+export const KIND_TRUSTED_PROVIDERS = 10040;
+
+/**
+ * kind:30002 — NIP-51 Relay Sets
+ * Used for user-curated relay collections.
+ */
+export const KIND_RELAY_SET = 30002;
+
+/**
+ * kind:10012 — NIP-51 Relay Feeds
+ * User's favorite relays list.
+ */
+export const KIND_FAVORITE_RELAYS = 10012;
+
+/**
+ * kind:10063 — NIP-B7 Blossom Servers
+ * Lists Blossom media servers the user prefers.
+ */
+export const KIND_BLOSSOM_SERVERS = 10063;
+
+/**
+ * kind:1111 — NIP-22 Comment
+ * Used for relay review comments, always scoped to a relay URL (I tag).
+ */
+export const KIND_COMMENT = 1111;
+
+/**
  * kind:3 — Follow List
  * Used for WoT computation (follow graph).
  */
@@ -138,14 +194,25 @@ export const NIP_TO_USE_CASE_MAP: Record<number, string[]> = {
   17: ['DMs', 'Privacy'],               // NIP-17 Private Direct Messages
   23: ['Long Form'],                    // NIP-23 Long-form content
   29: ['Communities'],                   // NIP-29 Relay-based groups
+  32: ['Moderation'],                    // NIP-32 Labeling
   42: ['Paid Access'],                   // NIP-42 Auth (often for paid)
+  43: ['Invite-Only', 'Membership'],     // NIP-43 Membership/access requests
   50: ['High Performance'],              // NIP-50 Search (indicates indexing capability)
+  51: ['Lists'],                         // NIP-51 Lists (relays sets, etc.)
+  56: ['Moderation'],                    // NIP-56 Reporting
   57: ['Zaps'],                          // NIP-57 Lightning Zaps
+  65: ['Lists'],                         // NIP-65 Relay List Metadata
+  66: ['Monitoring'],                    // NIP-66 Relay Discovery
+  67: ['High Performance'],              // NIP-67 EOSE Completeness
   71: ['Video', 'Images'],               // NIP-71 Video events
   72: ['Communities'],                   // NIP-72 Moderated communities
+  77: ['High Performance', 'Sync'],      // NIP-77 Negentropy Syncing
+  85: ['Trust'],                         // NIP-85 Trusted Assertions
+  86: ['Operator Tools'],                // NIP-86 Relay Management API
   94: ['Blossom', 'Images'],             // NIP-94 File metadata
   96: ['Blossom', 'Images', 'Video'],    // NIP-96 HTTP File Storage
   99: ['Marketplace'],                   // NIP-99 Classified Listings
+  100: ['Lists'],                        // NIP-10010 Membership lists (NIP-43)
 };
 
 /**
@@ -180,12 +247,20 @@ export const USE_CASE_DEFINITIONS: Record<string, { label: string; description: 
   'Communities':          { label: 'Communities',          description: 'NIP-29 groups or NIP-72 moderated communities', auto: true },
   'Marketplace':          { label: 'Marketplace',          description: 'NIP-99 classified listings and commerce', auto: true },
   'Paid Access':          { label: 'Paid Access',          description: 'Requires payment or NIP-42 auth for access', auto: true },
-  'High Performance':     { label: 'High Performance',     description: 'Optimized for speed, search (NIP-50), high throughput', auto: true },
+  'High Performance':     { label: 'High Performance',     description: 'Optimized for speed, search (NIP-50), negentropy sync (NIP-77), high throughput', auto: true },
   'Privacy':              { label: 'Privacy',              description: 'Privacy-focused with auth, restricted writes, or GDPR', auto: true },
   'Censorship Resistant': { label: 'Censorship Resistant', description: 'Minimal moderation, free speech policies', auto: false },
   'Archive':              { label: 'Archive',              description: 'Long-term event storage and historical data', auto: false },
   'Inbox':                { label: 'Inbox',                description: 'Personal inbox relay for mentions and DMs', auto: false },
   'Gaming':               { label: 'Gaming',               description: 'Gaming-related events and real-time data', auto: false },
+  'Moderation':           { label: 'Moderation',           description: 'NIP-32 labeling, NIP-56 reporting, NIP-86 management API', auto: true },
+  'Invite-Only':          { label: 'Invite-Only',          description: 'NIP-43 membership-based access requiring invites', auto: true },
+  'Membership':           { label: 'Membership',           description: 'NIP-43 membership lists and role-based access', auto: true },
+  'Lists':                { label: 'Lists',                description: 'NIP-51 relay sets, NIP-65 relay lists, favorites', auto: true },
+  'Monitoring':           { label: 'Monitoring',           description: 'NIP-66 liveness monitoring and relay discovery', auto: true },
+  'Trust':                { label: 'Trust',                description: 'NIP-85 trusted assertions and WoT scoring', auto: true },
+  'Sync':                 { label: 'Sync',                 description: 'NIP-77 negentropy syncing for efficient data transfer', auto: true },
+  'Operator Tools':       { label: 'Operator Tools',       description: 'NIP-86 relay management API for operators', auto: true },
 };
 
 // ─── Fallback Seed Relays ─────────────────────────────────────────────────────

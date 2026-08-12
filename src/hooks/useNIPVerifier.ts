@@ -253,6 +253,219 @@ const NIP_TESTS: NIPTest[] = [
       };
     },
   },
+  {
+    nip: 67,
+    name: 'EOSE Completeness Hints',
+    method: 'Check if EOSE includes finish/more hints',
+    test: async (ws) => {
+      const subId = `eose67_${randomHex(8)}`;
+      ws.send(JSON.stringify(['REQ', subId, { kinds: [1], limit: 1 }]));
+      const result = await waitForMessage(ws, (d) =>
+        (d[0] === 'EOSE' && d[1] === subId) ||
+        (d[0] === 'EVENT' && d[1] === subId),
+      3000);
+      ws.send(JSON.stringify(['CLOSE', subId]));
+
+      if (!result.matched || !result.data) {
+        return {
+          passed: false,
+          detail: 'No EOSE received',
+          latencyMs: result.latencyMs,
+        };
+      }
+
+      // Check for NIP-67 hints (third element in EOSE array)
+      const eoseData = result.data;
+      if (eoseData.length >= 3 && Array.isArray(eoseData[2])) {
+        const hints = eoseData[2] as string[];
+        return {
+          passed: true,
+          detail: `EOSE hints: ${hints.join(', ') || 'present'}`,
+          latencyMs: result.latencyMs,
+        };
+      }
+
+      return {
+        passed: false,
+        detail: 'No EOSE hints (legacy NIP-01 EOSE)',
+        latencyMs: result.latencyMs,
+      };
+    },
+  },
+  {
+    nip: 77,
+    name: 'Negentropy Syncing',
+    method: 'Check if relay supports NEG-OPEN',
+    test: async (ws) => {
+      const subId = `neg_${randomHex(8)}`;
+      // NIP-77 uses hex-encoded negentropy messages
+      // We send a minimal NEG-OPEN to see if the relay understands it
+      const dummyMessage = '61' + '00'.repeat(16); // version 1, empty range
+      ws.send(JSON.stringify(['NEG-OPEN', subId, { kinds: [1], limit: 1 }, dummyMessage]));
+
+      const result = await waitForMessage(ws, (d) =>
+        (d[0] === 'NEG-MSG' && d[1] === subId) ||
+        (d[0] === 'NEG-ERR' && d[1] === subId) ||
+        (d[0] === 'NOTICE') ||
+        (d[0] === 'CLOSED' && d[1] === subId),
+      3000);
+
+      if (!result.matched) {
+        return {
+          passed: false,
+          detail: 'No response to NEG-OPEN (relay may not support NIP-77)',
+          latencyMs: result.latencyMs,
+        };
+      }
+
+      const type = result.data?.[0];
+      if (type === 'NEG-MSG') {
+        return {
+          passed: true,
+          detail: 'Relay supports negentropy sync (NEG-MSG received)',
+          latencyMs: result.latencyMs,
+        };
+      }
+      if (type === 'NEG-ERR') {
+        const err = String(result.data?.[2] ?? '');
+        return {
+          passed: false,
+          detail: `Negentropy error: ${err.slice(0, 80)}`,
+          latencyMs: result.latencyMs,
+        };
+      }
+      if (type === 'CLOSED') {
+        const msg = String(result.data?.[2] ?? '');
+        return {
+          passed: false,
+          detail: `Negentropy not supported: ${msg.slice(0, 80)}`,
+          latencyMs: result.latencyMs,
+        };
+      }
+
+      return {
+        passed: false,
+        detail: 'Unknown response to NEG-OPEN',
+        latencyMs: result.latencyMs,
+      };
+    },
+  },
+  {
+    nip: 13,
+    name: 'Proof of Work',
+    method: 'Send event with nonce tag, check if relay validates PoW',
+    test: async (ws) => {
+      // Send an event with a nonce tag to see if relay checks PoW
+      const fakeEvent = {
+        id: randomHex(64),
+        pubkey: randomHex(64),
+        created_at: Math.floor(Date.now() / 1000),
+        kind: 1,
+        tags: [['nonce', '12345', '16']],
+        content: 'nip-verify-pow-test',
+        sig: randomHex(128),
+      };
+      ws.send(JSON.stringify(['EVENT', fakeEvent]));
+      const result = await waitForMessage(ws, (d) =>
+        d[0] === 'OK' && d[1] === fakeEvent.id,
+      3000);
+
+      if (result.matched && result.data) {
+        const accepted = result.data[2] as boolean;
+        const message = String(result.data[3] ?? '');
+        if (message.toLowerCase().includes('pow') || message.toLowerCase().includes('difficulty')) {
+          return {
+            passed: true,
+            detail: 'Relay validates PoW (rejected low-difficulty event)',
+            latencyMs: result.latencyMs,
+          };
+        }
+        return {
+          passed: accepted,
+          detail: accepted ? 'PoW accepted (may not enforce)' : 'PoW rejected',
+          latencyMs: result.latencyMs,
+        };
+      }
+
+      return {
+        passed: false,
+        detail: 'No OK response to PoW test event',
+        latencyMs: result.latencyMs,
+      };
+    },
+  },
+  {
+    nip: 86,
+    name: 'Relay Management API',
+    method: 'HTTP POST supportedmethods to relay URL',
+    test: async (ws) => {
+      // This test runs over HTTP, not WebSocket
+      // We'll check if the relay has a management API endpoint
+      const httpUrl = ''; // Not used in WS context
+      const start = Date.now();
+
+      try {
+        // We can't test HTTP from within the WS test framework
+        // Return as untested with a note
+        return {
+          passed: false,
+          detail: 'NIP-86 requires HTTP testing (not available in WebSocket verifier)',
+          latencyMs: Date.now() - start,
+        };
+      } catch {
+        return {
+          passed: false,
+          detail: 'NIP-86 test failed',
+          latencyMs: Date.now() - start,
+        };
+      }
+    },
+  },
+  {
+    nip: 43,
+    name: 'Membership & Access',
+    method: 'Check if relay supports kind:28934 join requests',
+    test: async (ws) => {
+      // Check if relay responds to a join request event
+      const fakeEvent = {
+        id: randomHex(64),
+        pubkey: randomHex(64),
+        created_at: Math.floor(Date.now() / 1000),
+        kind: 28934,
+        tags: [['claim', 'test-invite-code'], ['-']],
+        content: '',
+        sig: randomHex(128),
+      };
+      ws.send(JSON.stringify(['EVENT', fakeEvent]));
+      const result = await waitForMessage(ws, (d) =>
+        d[0] === 'OK' && d[1] === fakeEvent.id,
+      3000);
+
+      if (result.matched && result.data) {
+        const accepted = result.data[2] as boolean;
+        const message = String(result.data[3] ?? '');
+        // A relay that understands NIP-43 will respond with specific OK messages
+        if (message.includes('restricted') || message.includes('duplicate') || message.includes('welcome') || message.includes('invite')) {
+          return {
+            passed: true,
+            detail: `NIP-43 supported: ${message.slice(0, 80)}`,
+            latencyMs: result.latencyMs,
+          };
+        }
+        return {
+          passed: accepted,
+          detail: accepted ? 'Join request accepted' : `Join request rejected: ${message.slice(0, 60)}`,
+          latencyMs: result.latencyMs,
+        };
+      }
+
+      return {
+        passed: false,
+        detail: 'No OK response to join request',
+        latencyMs: result.latencyMs,
+      };
+    },
+  },
 ];
 
 // Map of NIP number → NIP test
