@@ -12,6 +12,7 @@ import { NIP66Badge, NIP66StatusDot } from "./NIP66Badge";
 import { CommunityTagsCompact } from "./VotingPanel";
 import { AddToRelayListButton } from "./AddToRelayListButton";
 import { BadgeCount } from "./RelayBadges";
+import { FavoriteButton, TrustBadge } from "./RelayCardExtras";
 import type { RelayRecord } from "@/types/relay";
 import type { LiveRelayRecord } from "@/hooks/useLiveRelayStore";
 import { relayUrlToId, shortenUrl, timeAgo, getNipName, formatLatency } from "@/lib/utils";
@@ -107,6 +108,7 @@ export function RelayCard({ relay, view = "grid" }: RelayCardProps) {
                   </span>
                 )}
                 {relay.nip66 && <NIP66Badge data={relay.nip66} size="sm" />}
+                <TrustBadge relayUrl={relay.url} size="sm" />
                 {relay.importSources?.some((s) => s.source === 'xport.top') && (
                   <TooltipProvider>
                     <Tooltip>
@@ -129,6 +131,7 @@ export function RelayCard({ relay, view = "grid" }: RelayCardProps) {
               </div>
             </div>
             <div className="flex items-center gap-1 flex-shrink-0">
+              <FavoriteButton relayUrl={relay.url} size="sm" />
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -236,7 +239,8 @@ export function RelayCard({ relay, view = "grid" }: RelayCardProps) {
                 </div>
               )}
             </div>
-            <div onClick={(e) => e.preventDefault()}>
+            <div className="flex items-center gap-1" onClick={(e) => e.preventDefault()}>
+              <FavoriteButton relayUrl={relay.url} size="sm" />
               <AddToRelayListButton relayUrl={relay.url} variant="compact" />
             </div>
           </div>

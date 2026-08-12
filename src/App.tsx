@@ -13,6 +13,7 @@ import { NostrLoginProvider } from '@nostrify/react/login';
 import { AppProvider } from '@/components/AppProvider';
 import { NWCProvider } from '@/contexts/NWCContext';
 import { AppConfig } from '@/contexts/AppContext';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import AppRouter from './AppRouter';
 
 const head = createHead({
@@ -58,9 +59,11 @@ export function App() {
               <NWCProvider>
                 <TooltipProvider>
                   <Toaster />
-                  <Suspense>
-                    <AppRouter />
-                  </Suspense>
+                  <ErrorBoundary>
+                    <Suspense>
+                      <AppRouter />
+                    </Suspense>
+                  </ErrorBoundary>
                 </TooltipProvider>
               </NWCProvider>
             </NostrProvider>

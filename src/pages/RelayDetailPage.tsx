@@ -6,7 +6,7 @@ import {
   CheckCircle2, XCircle, Loader2, ChevronRight, DollarSign,
   Download, Droplets, ThumbsUp, Wrench, MapPin, FileText,
   RefreshCw, FlaskConical, BarChart3, User, GitCompareArrows,
-  Globe,
+  Globe, Tag, MessageSquare, Key,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,6 +25,11 @@ import { VotingPanel } from "@/components/relay/VotingPanel";
 import { UptimeHistoryChart } from "@/components/charts/UptimeHistoryChart";
 import { AutoTagsPanel } from "@/components/relay/AutoTagsPanel";
 import { AddToRelayListButton } from "@/components/relay/AddToRelayListButton";
+import { RelayCommentSection } from "@/components/relay/RelayCommentSection";
+import { RelayLabelPanel } from "@/components/relay/RelayLabelPanel";
+import { RelayMembershipPanel } from "@/components/relay/RelayMembershipPanel";
+import { RelayManagementPanel } from "@/components/relay/RelayManagementPanel";
+import { FavoriteButton, TrustBadge, LabelBadges } from "@/components/relay/RelayCardExtras";
 import { useRelayById } from "@/hooks/useRelayData";
 import { useRelayTest } from "@/hooks/useRelayTest";
 import { useLiveNIP11 } from "@/hooks/useLiveNIP11";
@@ -313,10 +318,12 @@ export function RelayDetailPage() {
   const { data: monitorMap } = useNIP66Monitor();
   const [copied, setCopied] = useState(false);
   const [selectedClient, setSelectedClient] = useState("damus");
+  const { data: nip11Info } = useLiveNIP11(relay?.url ?? '', !!relay);
 
   // Get NIP-66 monitor data for this relay
   const monitorEvent = relay ? monitorMap?.get(relay.url) : undefined;
   const geoCoords = monitorEvent?.geohash ? decodeGeohash(monitorEvent.geohash) : null;
+  const relaySelfPubkey = nip11Info?.self ?? relay?.nip11?.self;
 
   const handleCopy = () => {
     if (!relay) return;
@@ -403,6 +410,7 @@ export function RelayDetailPage() {
                     <Droplets className="w-3 h-3" /> Blossom
                   </span>
                 )}
+                <TrustBadge relayUrl={relay.url} size="md" />
                 {relay.importSources?.some((s) => s.source === 'xport.top') && (
                   <TooltipProvider>
                     <Tooltip>
@@ -458,6 +466,11 @@ export function RelayDetailPage() {
                 ))}
               </div>
 
+              {/* NIP-32 Labels */}
+              <div className="mt-2">
+                <LabelBadges relayUrl={relay.url} max={5} />
+              </div>
+
               {/* Achievement Badges */}
               <div className="mt-3">
                 <RelayBadges relay={relay as LiveRelayRecord} size="sm" />
@@ -486,8 +499,9 @@ export function RelayDetailPage() {
       </Card>
 
       {/* Add to relay list CTA */}
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex items-center gap-3 mb-6 flex-wrap">
         <AddToRelayListButton relayUrl={relay.url} />
+        <FavoriteButton relayUrl={relay.url} size="md" />
         <Link to={`/compare?r1=${encodeURIComponent(relay.url)}`}>
           <Button variant="outline" size="sm" className="gap-2 text-xs">
             <GitCompareArrows className="w-3.5 h-3.5" />
@@ -518,6 +532,18 @@ export function RelayDetailPage() {
           <TabsTrigger value="community" className="flex items-center gap-1">
             <ThumbsUp className="w-3 h-3" />
             Community
+          </TabsTrigger>
+          <TabsTrigger value="comments" className="flex items-center gap-1">
+            <MessageSquare className="w-3 h-3" />
+            Comments
+          </TabsTrigger>
+          <TabsTrigger value="labels" className="flex items-center gap-1">
+            <Tag className="w-3 h-3" />
+            Labels
+          </TabsTrigger>
+          <TabsTrigger value="membership" className="flex items-center gap-1">
+            <Users className="w-3 h-3" />
+            Membership
           </TabsTrigger>
           <TabsTrigger value="autotags" className="flex items-center gap-1">
             <Code2 className="w-3 h-3" />
@@ -997,6 +1023,22 @@ export function RelayDetailPage() {
               </CardContent>
             </Card>
           )}
+        </TabsContent>
+
+        {/* Comments Tab (NIP-22) */}
+        <TabsContent value="comments" className="space-y-4">
+          <RelayCommentSection relayUrl={relay.url} />
+        </TabsContent>
+
+        {/* Labels Tab (NIP-32 + NIP-85) */}
+        <TabsContent value="labels" className="space-y-4">
+          <RelayLabelPanel relayUrl={relay.url} />
+        </TabsContent>
+
+        {/* Membership Tab (NIP-43) */}
+        <TabsContent value="membership" className="space-y-4">
+          <RelayMembershipPanel relayUrl={relay.url} relaySelfPubkey={relaySelfPubkey} />
+          <RelayManagementPanel relayUrl={relay.url} />
         </TabsContent>
 
         {/* Auto-Tags Tab */}

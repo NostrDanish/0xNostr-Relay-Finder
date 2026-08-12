@@ -18,6 +18,8 @@ import { ComparePage } from "@/pages/ComparePage";
 import { BuildPage } from "@/pages/BuildPage";
 import { ExplorePage } from "@/pages/ExplorePage";
 import { AtlasPage } from "@/pages/AtlasPage";
+import { RelaySetsPage } from "@/pages/RelaySetsPage";
+import { ProtocolCoveragePage } from "@/pages/ProtocolCoveragePage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { useLiveRelayStore } from "@/hooks/useLiveRelayStore";
 
@@ -54,6 +56,8 @@ function AppLayout() {
           <Route path="/build" element={<BuildPage />} />
           <Route path="/explore" element={<ExplorePage />} />
           <Route path="/atlas" element={<AtlasPage />} />
+          <Route path="/sets" element={<RelaySetsPage />} />
+          <Route path="/protocols" element={<ProtocolCoveragePage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </main>

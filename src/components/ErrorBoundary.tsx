@@ -1,109 +1,82 @@
-import { Component, ErrorInfo, ReactNode } from 'react';
+/**
+ * ErrorBoundary — Catches React component errors and shows a fallback UI
+ * instead of white-screening the entire app.
+ */
 
-interface ErrorBoundaryState {
+import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { AlertTriangle, RefreshCw, Home } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+
+interface Props {
+  children: ReactNode;
+  fallback?: ReactNode;
+}
+
+interface State {
   hasError: boolean;
   error: Error | null;
   errorInfo: ErrorInfo | null;
 }
 
-interface ErrorBoundaryProps {
-  children: ReactNode;
-  fallback?: ReactNode;
-}
-
-
-
-export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  constructor(props: ErrorBoundaryProps) {
+export class ErrorBoundary extends Component<Props, State> {
+  constructor(props: Props) {
     super(props);
-    this.state = {
-      hasError: false,
-      error: null,
-      errorInfo: null,
-    };
+    this.state = { hasError: false, error: null, errorInfo: null };
   }
 
-  static getDerivedStateFromError(error: Error): Partial<ErrorBoundaryState> {
-    return {
-      hasError: true,
-      error,
-    };
+  static getDerivedStateFromError(error: Error): State {
+    return { hasError: true, error, errorInfo: null };
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Error caught by ErrorBoundary:', error, errorInfo);
-
-    this.setState({
-      error,
-      errorInfo,
-    });
+    console.error('ErrorBoundary caught:', error, errorInfo);
+    this.setState({ error, errorInfo });
   }
 
   handleReset = () => {
-    this.setState({
-      hasError: false,
-      error: null,
-      errorInfo: null,
-    });
+    this.setState({ hasError: false, error: null, errorInfo: null });
+  };
+
+  handleGoHome = () => {
+    window.location.href = '/';
   };
 
   render() {
     if (this.state.hasError) {
-      if (this.props.fallback) {
-        return this.props.fallback;
-      }
+      if (this.props.fallback) return this.props.fallback;
 
       return (
-        <div className="min-h-screen bg-background flex items-center justify-center p-4">
-          <div className="max-w-md w-full space-y-4">
-            <div className="text-center">
-              <h2 className="text-2xl font-bold text-foreground mb-2">
-                Something went wrong
-              </h2>
-              <p className="text-muted-foreground">
-                An unexpected error occurred. The error has been reported.
+        <div className="min-h-screen flex items-center justify-center p-4 bg-background">
+          <Card className="max-w-md w-full border-red-500/30">
+            <CardHeader className="text-center">
+              <div className="w-12 h-12 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-3">
+                <AlertTriangle className="w-6 h-6 text-red-500" />
+              </div>
+              <CardTitle className="text-lg">Something went wrong</CardTitle>
+            </CardHeader>
+            <CardContent className="text-center space-y-4">
+              <p className="text-sm text-muted-foreground">
+                {this.state.error?.message ?? 'An unexpected error occurred'}
               </p>
-            </div>
-
-            <div className="bg-muted p-4 rounded-lg">
-              <details className="text-sm">
-                <summary className="cursor-pointer font-medium text-foreground">
-                  Error details
-                </summary>
-                <div className="mt-2 space-y-2">
-                  <div>
-                    <strong className="text-foreground">Message:</strong>
-                    <p className="text-muted-foreground mt-1">
-                      {this.state.error?.message}
-                    </p>
-                  </div>
-                  {this.state.error?.stack && (
-                    <div>
-                      <strong className="text-foreground">Stack trace:</strong>
-                      <pre className="text-xs text-muted-foreground mt-1 overflow-auto max-h-32">
-                        {this.state.error.stack}
-                      </pre>
-                    </div>
-                  )}
-                </div>
-              </details>
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                onClick={this.handleReset}
-                className="flex-1 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
-              >
-                Try again
-              </button>
-              <button
-                onClick={() => window.location.reload()}
-                className="flex-1 px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/90 transition-colors"
-              >
-                Reload page
-              </button>
-            </div>
-          </div>
+              {this.state.errorInfo && (
+                <details className="text-xs text-left bg-muted/50 rounded-lg p-3 max-h-32 overflow-auto">
+                  <summary className="font-semibold cursor-pointer">Error details</summary>
+                  <pre className="mt-2 whitespace-pre-wrap break-all">
+                    {this.state.errorInfo.componentStack}
+                  </pre>
+                </details>
+              )}
+              <div className="flex gap-2 justify-center">
+                <Button onClick={this.handleReset} variant="outline" className="gap-2">
+                  <RefreshCw className="w-4 h-4" /> Try Again
+                </Button>
+                <Button onClick={this.handleGoHome} className="gap-2">
+                  <Home className="w-4 h-4" /> Go Home
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       );
     }

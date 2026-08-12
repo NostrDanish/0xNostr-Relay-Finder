@@ -26,9 +26,11 @@ const NAV_LINKS = [
   { href: "/atlas", label: "Atlas" },
   { href: "/explore", label: "Explore" },
   { href: "/relays", label: "Directory" },
+  { href: "/sets", label: "Sets" },
   { href: "/build", label: "Build Set" },
   { href: "/compare", label: "Compare" },
   { href: "/software", label: "Software" },
+  { href: "/protocols", label: "Protocols" },
 ];
 
 const ROLE_ICONS = {
