@@ -20,6 +20,11 @@ A complete walkthrough of every feature in the relay directory.
 12. [Community Voting](#12-community-voting)
 13. [Admin Moderation Dashboard](#13-admin-moderation-dashboard)
 14. [Nostr Protocol API](#14-nostr-protocol-api)
+15. [Nostr Atlas (World Map)](#15-nostr-atlas-world-map)
+16. [Relay Sets & Favorites](#16-relay-sets--favorites)
+17. [Labels, Trust & Comments](#17-labels-trust--comments)
+18. [Membership & Operator Tools](#18-membership--operator-tools)
+19. [Protocol Coverage Page](#19-protocol-coverage-page)
 
 ---
 
@@ -75,9 +80,11 @@ Each relay card shows:
 | NIP badges | Key supported NIPs (NIP-50 Search, NIP-42 Auth, etc.) |
 | Blossom badge | Relay supports Blossom media uploads |
 | NIP-66 badge | Real-time health data from an official monitor |
+| Trust badge (shield) | NIP-32/NIP-85 trust score (0-100) from moderators or WoT providers |
 | Community tags | Most-voted community labels |
 | Country flag | Where the relay is hosted |
 | Latency | Average round-trip time in milliseconds |
+| Heart button | Add/remove from your NIP-51 favorites (kind:10012) |
 | "Add to Relays" button | One-click add to your NIP-65 relay list |
 
 ---
@@ -116,6 +123,24 @@ See [NIP Verification](#4-nip-verification) below.
 - **Voting panel** --- upvote relays for specific use-case tags
 - Relay.tools one-click integration link (when available)
 
+### Comments Tab (NIP-22)
+- **Threaded reviews** --- signed by your Nostr identity, no fake reviews
+- **Nested replies** --- up to 3 levels deep
+- Comments are scoped to the relay URL via NIP-73 `I` tags, so they're portable across apps
+
+### Labels Tab (NIP-32 + NIP-85)
+- **Trusted assertion score** --- WoT-based 0-100 score from providers like nostr.band
+- **Categories** --- community-applied labels ("fast", "reliable", "dm-friendly")
+- **Moderation labels** --- content policy flags from moderators
+- **Add labels** --- logged-in users can apply category/UGC labels; moderators can set trust scores
+
+### Membership Tab (NIP-43 + NIP-86)
+- **Membership status** --- see if you're a member, member count, and roles
+- **Join with invite code** --- claim-based admission for invite-only relays
+- **Request invite** --- ask the relay for a claim (kind:28935)
+- **Leave relay** --- revoke your own access (kind:28936)
+- **Operator tools** --- if the relay supports NIP-86 and you're authenticated, ban/unban pubkeys and manage the relay directly
+
 ### Auto-Tags Tab
 - Shows which use-case tags were automatically inferred from NIP support
 - Explains the mapping: NIP-17 -> DMs + Privacy, NIP-50 -> High Performance, etc.
@@ -123,6 +148,8 @@ See [NIP Verification](#4-nip-verification) below.
 ### NIPs Tab
 - Full list of supported NIPs with links to the NIP specification on GitHub
 - Each NIP shows its human-readable name
+- **Compatible Apps (NIP-89)** --- find apps that handle the event kinds this relay supports
+- **Blossom Servers (NIP-B7)** --- health status of associated media servers (when supported)
 
 ### Pricing Tab
 - Price tiers with features, billing period, and payment links
@@ -151,11 +178,16 @@ This is what makes 0xRelays-Finder unique. Instead of trusting a relay's self-re
 | NIP | Test Method | What We Check |
 |-----|------------|---------------|
 | NIP-01 (Basic Protocol) | Send `REQ` with `{kinds:[1], limit:1}` | Relay returns `EVENT` or `EOSE` |
+| NIP-13 (Proof of Work) | Send `EVENT` with `nonce` tag | Relay validates PoW difficulty |
 | NIP-15 (EOSE) | Send `REQ` with `{kinds:[0], limit:0}` | Relay sends `EOSE` marker |
 | NIP-20 (Command Results) | Send invalid `EVENT` | Relay responds with `OK` (accepted or rejected) |
 | NIP-42 (Authentication) | Wait after connection | Relay sends `AUTH` challenge within 2 seconds |
+| NIP-43 (Membership) | Send kind:28934 join request | Relay responds with membership-aware `OK` |
 | NIP-45 (Counting) | Send `COUNT` request | Relay responds with count object |
 | NIP-50 (Search) | Send `REQ` with `search` filter | Relay doesn't immediately close/error |
+| NIP-67 (EOSE Hints) | Send `REQ`, inspect `EOSE` | `EOSE` carries `["finish"]` / `["more"]` hints |
+| NIP-77 (Negentropy) | Send `NEG-OPEN` | Relay responds with `NEG-MSG` |
+| NIP-86 (Management API) | HTTP POST `supportedmethods` | Relay answers the management RPC |
 
 ### Result States
 
@@ -172,16 +204,18 @@ After testing, a percentage score is calculated: `verified / (verified + failed)
 
 ## 5. Health Score Explained
 
-Every relay receives a transparent health score from 0 to 100, broken into 7 components:
+Every relay receives a transparent health score from 0 to 100, broken into 9 components (v2 — NIP-enhanced):
 
 | Component | Max Points | How It's Calculated |
 |-----------|-----------|-------------------|
-| **30-Day Uptime** | 35 | Direct mapping: 100% uptime = 35 points |
-| **Latency** | 20 | Under 50ms = 20 pts, over 2000ms = 0 pts, linear scale |
+| **30-Day Uptime** | 25 | Direct mapping: 100% uptime = 25 points |
+| **Latency** | 15 | Under 50ms = 15 pts, over 2000ms = 0 pts, linear scale |
 | **NIP-11 Completeness** | 10 | 2 pts each for name, description, contact; 1 pt for icon, software; 2 pts for having NIPs listed |
-| **Community Trust** | 10 | Based on existing trust score from WoT-weighted votes |
-| **NIP Support Breadth** | 10 | 1 point per supported NIP, max 10 |
-| **Operator Verification** | 10 | 5 pts for NIP-11 pubkey, 3 pts for NIP-66 monitoring, 2 pts for website |
+| **Community Trust** | 10 | Up to 5 pts from WoT-weighted votes, 3 pts from NIP-32 trusted labels, 2 pts from NIP-85 assertions |
+| **NIP Support Breadth** | 10 | 0.5 point per supported NIP, max 10 (20+ NIPs) |
+| **Operator Verification** | 10 | 4 pts for NIP-11 pubkey, 3 pts for NIP-66 monitoring, 2 pts for website, 1 pt for ToS |
+| **Membership Features** | 5 | 2 pts for members list, 2 pts for roles, 1 pt for invite system (NIP-43) |
+| **Advanced Protocol** | 5 | 1.5 pts NIP-67 EOSE hints, 2 pts NIP-77 negentropy, 1.5 pts NIP-86 management API |
 | **Directory Age** | 5 | 1 point per month in the directory, max 5 |
 
 ### Letter Grades
@@ -477,9 +511,122 @@ wss://relay.snort.social
 ["REQ", "reports", {"kinds": [1984], "#t": ["relay-issue"], "limit": 20}]
 ```
 
+**Get relay labels (NIP-32):**
+```json
+["REQ", "labels", {"kinds": [1985], "#r": ["wss://relay.example.com"], "limit": 50}]
+```
+
+**Get relay comments (NIP-22):**
+```json
+["REQ", "comments", {"kinds": [1111], "#I": ["wss://relay.example.com"], "limit": 100}]
+```
+
+**Get relay sets (NIP-51):**
+```json
+["REQ", "sets", {"kinds": [30002], "limit": 50}]
+```
+
 No API keys. No rate limits. No authentication required. Fully decentralised.
 
 See [NIP.md](./NIP.md) for the complete event schema with field-by-field documentation.
+
+---
+
+## 15. Nostr Atlas (World Map)
+
+Navigate to `/atlas` or click "Atlas" in the navbar.
+
+The Atlas is a dependency-free SVG world map showing every geolocated relay:
+
+- **Color-coded markers** --- green (healthy), yellow (slow, >250ms), red (offline)
+- **Clustering** --- zoomed out, nearby relays group into numbered clusters; zoom in to see individual markers
+- **Pan & zoom** --- drag to pan, scroll wheel or +/- buttons to zoom
+- **Click a marker** --- popup with relay details (uptime, latency, NIPs, software) and a link to the full page
+- **Filters** --- status, software, country, features (auth, payment, Blossom, NIP-66)
+- **Stats bar** --- mapped relays, online/slow/offline counts, countries represented
+
+Geolocation comes from NIP-66 monitor geohashes --- no tile servers, no tracking, fully self-contained.
+
+---
+
+## 16. Relay Sets & Favorites
+
+### Favorites (kind:10012)
+
+Click the **heart icon** on any relay card or detail page. Your favorites are published as a public NIP-51 list and sync across any client that reads kind:10012.
+
+### Relay Sets (kind:30002)
+
+Navigate to `/sets` to browse community-curated relay collections:
+
+- **Create a set** --- pick a unique ID, title, description, and select relays from the directory
+- **Live health** --- every set shows real-time online/offline counts per relay
+- **Copy a set** --- export the relay list as JSON with one click
+- **Delete your sets** --- publishes a NIP-09 deletion request
+
+Sets are addressable events, so they're portable --- any NIP-51-aware client can read them.
+
+---
+
+## 17. Labels, Trust & Comments
+
+### Trust Badges
+
+Relays can carry a 0-100 trust badge from two sources:
+
+1. **NIP-32 labels** --- moderators publish `com.0xrelayfinder.trust` labels
+2. **NIP-85 trusted assertions** --- WoT providers (e.g. nostr.band) publish rank scores for relay URLs
+
+When both exist, the highest confidence score is displayed. Hover the badge to see the source.
+
+### Adding Labels
+
+On a relay's **Labels** tab:
+- Anyone logged in can add **category** or **UGC** labels
+- Moderators can additionally set **trust scores** (0-100) and **moderation** labels
+
+### Comments
+
+On a relay's **Comments** tab:
+- Post a top-level review, or reply to existing comments (up to 3 levels deep)
+- Comments are signed Nostr events (kind:1111) --- they can't be faked
+- Comments follow NIP-22, so other Nostr apps can display the same threads
+
+---
+
+## 18. Membership & Operator Tools
+
+### Joining a Membership Relay (NIP-43)
+
+On a relay's **Membership** tab:
+
+1. If the relay is invite-only, click **Join**
+2. Paste an invite code (claim), or click **Request invite from relay** to ask for one
+3. The app sends a kind:28934 join request to the relay
+4. Once accepted, you appear in the relay's member list (kind:13534)
+
+To leave, click **Leave** --- this sends a kind:28936 request revoking your access.
+
+### Operator Tools (NIP-86)
+
+If a relay supports the NIP-86 Management API and you're the operator:
+
+1. The Membership tab shows **Operator Tools** with a green "Management API Available" status
+2. Authenticate with your Nostr signer (NIP-98 HTTP auth)
+3. Available actions: ban/unban pubkeys with reasons, list allowed/banned pubkeys, moderation queue, relay configuration
+
+The app probes `supportedmethods` to detect NIP-86 support automatically.
+
+---
+
+## 19. Protocol Coverage Page
+
+Navigate to `/protocols` for a transparent list of all 34 NIPs the app supports:
+
+- **Grouped by category** --- core, relay, client, social, monetization, privacy, moderation, data
+- **Implementation status** --- implemented vs. not
+- **Verification capability** --- which NIPs can be tested live from the browser
+- **Spec links** --- direct links to each NIP's specification
 
 ---
 

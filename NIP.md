@@ -165,6 +165,153 @@ Used for reporting relay issues:
 
 ---
 
+### kind:1985 — NIP-32 Label
+
+Used for labeling relays with trust scores, categories, and moderation flags:
+
+```json
+{
+  "kind": 1985,
+  "content": "Trust score: 85/100",
+  "tags": [
+    ["L", "com.0xrelayfinder.trust"],
+    ["l", "85", "com.0xrelayfinder.trust"],
+    ["r", "wss://relay.example.com"]
+  ]
+}
+```
+
+**Namespaces used:**
+- `com.0xrelayfinder.trust` — 0-100 trust score (trusted labelers only: owner + admins)
+- `com.0xrelayfinder.category` — free-form categories like "fast", "reliable"
+- `social.nos.ontology` — content moderation labels (moderators only)
+- `ugc` — user-generated labels (anyone)
+
+Labels from trusted labelers are highlighted in the UI and weighted in the health score.
+
+---
+
+### kind:1111 — NIP-22 Comment
+
+Threaded relay reviews, scoped to the relay URL via NIP-73 `I` tags:
+
+```json
+{
+  "kind": 1111,
+  "content": "Rock-solid relay, 3 months without a hiccup.",
+  "tags": [
+    ["I", "wss://relay.example.com"],
+    ["K", "web"],
+    ["i", "wss://relay.example.com"],
+    ["k", "web"]
+  ]
+}
+```
+
+Replies add a lowercase `e` tag pointing to the parent comment:
+
+```json
+{
+  "kind": 1111,
+  "content": "Agreed, best DM relay I've used.",
+  "tags": [
+    ["I", "wss://relay.example.com"],
+    ["K", "web"],
+    ["i", "wss://relay.example.com"],
+    ["k", "web"],
+    ["e", "<parent_comment_id>"],
+    ["k", "1111"],
+    ["p", "<parent_comment_author>"]
+  ]
+}
+```
+
+---
+
+### kind:10012 — NIP-51 Favorite Relays List
+
+The user's personal favorite relays (replaceable list):
+
+```json
+{
+  "kind": 10012,
+  "content": "",
+  "tags": [
+    ["relay", "wss://relay.damus.io"],
+    ["relay", "wss://relay.primal.net"]
+  ]
+}
+```
+
+---
+
+### kind:30002 — NIP-51 Relay Set
+
+User-curated named relay collections (addressable, shareable):
+
+```json
+{
+  "kind": 30002,
+  "content": "",
+  "tags": [
+    ["d", "my-privacy-relays"],
+    ["title", "My Privacy Relays"],
+    ["description", "Hand-picked relays with strong privacy policies"],
+    ["relay", "wss://relay.example.com"],
+    ["relay", "wss://another.example.com"]
+  ]
+}
+```
+
+---
+
+### kind:28934 / 28936 — NIP-43 Join / Leave Requests
+
+**Join request** (sent to the relay, requires invite claim):
+
+```json
+{
+  "kind": 28934,
+  "content": "",
+  "tags": [
+    ["-"],
+    ["claim", "<invite-code>"]
+  ]
+}
+```
+
+**Leave request** (revoke own access):
+
+```json
+{
+  "kind": 28936,
+  "content": "",
+  "tags": [["-"]]
+}
+```
+
+---
+
+### kind:27235 — NIP-98 HTTP Auth
+
+Used to authenticate NIP-86 Relay Management API calls:
+
+```json
+{
+  "kind": 27235,
+  "content": "",
+  "tags": [
+    ["u", "https://relay.example.com"],
+    ["method", "POST"],
+    ["payload", "<sha256-of-body>"]
+  ]
+}
+```
+
+Base64-encoded into the `Authorization: Nostr <base64>` header of the management API request.
+
+---
+
 ## External NIPs Used
 
 ### NIP-11 — Relay Information Document
@@ -176,7 +323,43 @@ Used for reporting relay issues:
 - kind:30166 (Relay Discovery) — health data from monitors
 - kind:10166 (Monitor Announcement) — monitor metadata
 - Filtered by trusted monitor pubkeys
-- Provides: latency, uptime, capabilities, live status
+- Provides: latency, uptime, capabilities, live status, geohash
+
+### NIP-85 — Trusted Assertions (consumed)
+- kind:30382 — operator pubkey WoT rank
+- kind:30384 — relay submission event rank
+- kind:30385 — relay URL trust rank
+- kind:10040 — user's preferred assertion providers
+- Default provider: nostr.band (`4fd5e210...`) — users can override via kind:10040
+- Displayed as trust badges on relay cards and detail pages
+
+### NIP-43 — Relay Access Metadata (consumed)
+- kind:33534 — relay role definitions (from relay's `self` pubkey)
+- kind:13534 — membership lists (from relay's `self` pubkey)
+- kind:28935 — invite claims (ephemeral, from relay's `self` pubkey)
+- kind:8000 / 8001 — member add/remove notifications
+
+### NIP-86 — Relay Management API (consumed)
+- HTTP JSON-RPC endpoint at the relay's URL
+- `supportedmethods` probe detects support
+- Authenticated via NIP-98 (kind:27235)
+- Enables operator tools: ban/unban pubkeys, moderation queue, relay config
+
+### NIP-89 — App Handler Discovery (consumed)
+- kind:31989 — handler recommendations
+- kind:31990 — handler info (supported kinds, URLs)
+- Surfaces compatible apps for the event kinds a relay supports
+
+### NIP-B7 — Blossom (consumed)
+- kind:10063 — user's preferred Blossom servers
+- NIP-94/96 in `supported_nips` indicates media capability
+- Server health checks against `/upload` endpoint
+
+### NIP-67 — EOSE Completeness Hint (verified)
+- Checked during verification: does `EOSE` carry `["finish"]` / `["more"]` hints?
+
+### NIP-77 — Negentropy Syncing (verified)
+- Checked during verification: does the relay answer `NEG-OPEN` with `NEG-MSG`?
 
 ### NIP-65 — Relay List Metadata
 - kind:10002 events
@@ -186,7 +369,7 @@ Used for reporting relay issues:
 - kind:3 events
 - Used to build the Web of Trust graph for vote weighting
 
-### NIP-44 — Encrypted Direct Messages
+### NIP-44 — Encrypted Payloads
 - Used for encrypting private operator notes in relay submissions
 - Encrypted to the app owner's pubkey
 
@@ -202,11 +385,21 @@ The auto-tagger maps NIP support to use-case tags:
 | NIP-17 | DMs, Privacy |
 | NIP-23 | Long Form |
 | NIP-29 | Communities |
+| NIP-32 | Moderation |
 | NIP-42 | Paid Access |
+| NIP-43 | Invite-Only, Membership |
 | NIP-50 | High Performance |
+| NIP-51 | Lists |
+| NIP-56 | Moderation |
 | NIP-57 | Zaps |
+| NIP-65 | Lists |
+| NIP-66 | Monitoring |
+| NIP-67 | High Performance |
 | NIP-71 | Video, Images |
 | NIP-72 | Communities |
+| NIP-77 | High Performance, Sync |
+| NIP-85 | Trust |
+| NIP-86 | Operator Tools |
 | NIP-94 | Blossom, Images |
 | NIP-96 | Blossom, Images, Video |
 | NIP-99 | Marketplace |
