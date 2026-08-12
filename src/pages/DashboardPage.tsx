@@ -16,6 +16,7 @@ import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Textarea } from '@/components/ui/textarea';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
@@ -576,7 +577,19 @@ export function DashboardPage() {
       </div>
 
       {/* Stats grid */}
-      {!statsLoading && (
+      {statsLoading ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <Card key={i} className="border-border/60">
+              <CardContent className="pt-4 pb-4 text-center">
+                <Skeleton className="w-5 h-5 mx-auto mb-1.5 rounded-full" />
+                <Skeleton className="h-8 w-12 mx-auto mb-1" />
+                <Skeleton className="h-3 w-16 mx-auto" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
           {[
             { label: 'Seed Relays', value: RELAY_SEED_DATA.length, icon: Radio, color: 'text-primary' },
@@ -668,8 +681,16 @@ export function DashboardPage() {
             </CardHeader>
             <CardContent>
               {subsLoading ? (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
-                  <Loader2 className="w-4 h-4 animate-spin" /> Loading from {APP_RELAY_URL}…
+                <div className="space-y-3 py-4">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="flex items-center gap-3">
+                      <Skeleton className="w-10 h-10 rounded-full" />
+                      <div className="flex-1 space-y-2">
+                        <Skeleton className="h-4 w-3/4" />
+                        <Skeleton className="h-3 w-1/2" />
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : filteredSubs(pending).length === 0 ? (
                 <div className="py-8 text-center text-muted-foreground">

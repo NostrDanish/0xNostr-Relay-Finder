@@ -343,13 +343,21 @@ export function AtlasPage() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
-          <StatCard label="Mapped Relays" value={geoTotal} sub={`of ${stats.totalRelays} tracked`} icon={<MapPin className="w-4 h-4 text-primary" />} color="bg-primary/15" />
-          <StatCard label="Online" value={onlineCount} icon={<CheckCircle2 className="w-4 h-4 text-emerald-500" />} color="bg-emerald-500/15" />
-          <StatCard label="Slow" value={slowCount} icon={<AlertCircle className="w-4 h-4 text-yellow-500" />} color="bg-yellow-500/15" />
-          <StatCard label="Offline" value={offlineCount} icon={<XCircle className="w-4 h-4 text-red-500" />} color="bg-red-500/15" />
-          <StatCard label="Countries" value={stats.countriesRepresented} icon={<Globe2 className="w-4 h-4 text-blue-500" />} color="bg-blue-500/15" />
-        </div>
+        {loading ? (
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <Skeleton key={i} className="h-16 rounded-xl" />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+            <StatCard label="Mapped Relays" value={geoTotal} sub={`of ${stats.totalRelays} tracked`} icon={<MapPin className="w-4 h-4 text-primary" />} color="bg-primary/15" />
+            <StatCard label="Online" value={onlineCount} icon={<CheckCircle2 className="w-4 h-4 text-emerald-500" />} color="bg-emerald-500/15" />
+            <StatCard label="Slow" value={slowCount} icon={<AlertCircle className="w-4 h-4 text-yellow-500" />} color="bg-yellow-500/15" />
+            <StatCard label="Offline" value={offlineCount} icon={<XCircle className="w-4 h-4 text-red-500" />} color="bg-red-500/15" />
+            <StatCard label="Countries" value={stats.countriesRepresented} icon={<Globe2 className="w-4 h-4 text-blue-500" />} color="bg-blue-500/15" />
+          </div>
+        )}
       </div>
 
       {/* Map + Sidebar */}
@@ -436,13 +444,22 @@ export function AtlasPage() {
 
           {/* Map container */}
           <div className="flex-1 min-h-[500px] lg:min-h-0">
-            <RelayMap
-              relays={filteredRelays}
-              selectedRelayUrl={selectedRelayUrl}
-              onShowNearby={handleShowNearby}
-              height="100%"
-              className="h-full min-h-[500px] lg:min-h-0"
-            />
+            {loading ? (
+              <div className="w-full h-full min-h-[500px] rounded-2xl border border-border/60 bg-card/50 flex items-center justify-center">
+                <div className="text-center space-y-3">
+                  <Loader2 className="w-8 h-8 text-primary animate-spin mx-auto" />
+                  <p className="text-sm text-muted-foreground">Loading relay map...</p>
+                </div>
+              </div>
+            ) : (
+              <RelayMap
+                relays={filteredRelays}
+                selectedRelayUrl={selectedRelayUrl}
+                onShowNearby={handleShowNearby}
+                height="100%"
+                className="h-full min-h-[500px] lg:min-h-0"
+              />
+            )}
           </div>
 
           {/* Right side relay list */}

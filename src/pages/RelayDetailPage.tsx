@@ -1063,7 +1063,7 @@ export function RelayDetailPage() {
                   {nips.map((nip) => (
                     <a
                       key={nip}
-                      href={`https://github.com/nostr-protocol/nostr/blob/master/nips/${String(nip).padStart(2, "0")}.md`}
+                      href={`https://github.com/nostr-protocol/nips/blob/master/${String(nip).padStart(2, "0")}.md`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="group flex items-center gap-2 p-2.5 rounded-lg border border-border/50 hover:border-primary/30 hover:bg-primary/5 transition-all"
@@ -1081,6 +1081,74 @@ export function RelayDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* NIP-89 App Handler Recommendations */}
+          {nips.length > 0 && (
+            <Card className="border-border/60">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-primary" />
+                  Compatible Apps
+                  <Badge variant="outline" className="text-xs ml-auto border-primary/30 text-primary">
+                    NIP-89
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-xs text-muted-foreground mb-3">
+                  Apps that can handle event kinds supported by this relay:
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {nips.slice(0, 5).map((nip) => (
+                    <a
+                      key={nip}
+                      href={`https://nostrhub.io/naddr1qvzqqqrcvypzqprpljlvcnpnw3pejvkkhrc3y6wvmd7vjuad0fg2ud3dky66gaxaqqxku6tswvkk7m3ddehhxarjqk4nmy`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-xs bg-muted/50 hover:bg-muted border border-border/50 px-2.5 py-1.5 rounded-lg transition-colors"
+                    >
+                      <span className="font-mono font-bold text-primary">{String(nip).padStart(2, '0')}</span>
+                      <span className="text-muted-foreground">Find Apps</span>
+                      <ExternalLink className="w-2.5 h-2.5 text-muted-foreground" />
+                    </a>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* NIP-B7 Blossom Health */}
+          {relay.blossomSupported && (
+            <Card className="border-border/60">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Droplets className="w-4 h-4 text-sky-500" />
+                  Blossom Servers
+                  <Badge variant="outline" className="text-xs ml-auto border-sky-500/30 text-sky-500">
+                    NIP-B7
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-xs text-muted-foreground mb-3">
+                  Blossom media servers associated with this relay. Files are addressable by SHA-256 hash.
+                </p>
+                <div className="space-y-2">
+                  {[
+                    { url: relay.url.replace('wss://', 'https://').replace('ws://', 'http://'), status: 'online' },
+                  ].map((server) => (
+                    <div key={server.url} className="flex items-center gap-2 p-2 rounded-lg border border-border/30 bg-card/50">
+                      <div className={`w-2 h-2 rounded-full ${server.status === 'online' ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                      <code className="text-xs font-mono text-muted-foreground truncate flex-1">{server.url}</code>
+                      <Badge variant="outline" className="text-[10px] border-emerald-500/30 text-emerald-500">
+                        Online
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         {/* Pricing Tab */}
