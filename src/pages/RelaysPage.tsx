@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useSeoMeta } from "@unhead/react";
 import { useSearchParams } from "react-router-dom";
-import { Grid3X3, List, Search, SlidersHorizontal, X, Download, FileJson } from "lucide-react";
+import { Grid3X3, List, Search, SlidersHorizontal, X, Download, FileJson, Radar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -18,7 +18,7 @@ import type { UseCaseTag, RelayRecord } from "@/types/relay";
 
 export function RelaysPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { relays, loading, stats } = useLiveRelayStore();
+  const { relays, loading, stats, discoveredCount, discoverableTotal } = useLiveRelayStore();
   const { toast } = useToast();
   const [view, setView] = useState<"grid" | "list">("grid");
   const [search, setSearch] = useState(searchParams.get("q") ?? "");
@@ -107,6 +107,13 @@ export function RelaysPage() {
         <p className="text-muted-foreground text-sm">
           Discover and compare Nostr relays. Find the perfect relay for your needs.
         </p>
+        {discoveredCount > 0 && (
+          <p className="text-xs text-cyan-500 mt-1.5 flex items-center gap-1.5">
+            <Radar className="w-3 h-3" />
+            {discoveredCount} relays auto-discovered from the NIP-66 monitor network
+            {discoverableTotal > discoveredCount && ` (${discoverableTotal} total observed)`}
+          </p>
+        )}
       </div>
 
       {/* Search + Controls */}

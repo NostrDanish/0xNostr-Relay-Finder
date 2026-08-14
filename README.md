@@ -14,6 +14,7 @@ Find, compare, and evaluate Nostr relays by uptime, latency, NIP support, pricin
 
 ### Relay Directory
 - **29+ seed relays** with detailed NIP-11 info, plus community-submitted relays
+- **Automatic relay discovery** — consumes kind:30166 from ALL monitors on the NIP-66 meta-relays (`relay.nostr.watch`, `relaypag.es`, `monitorlizard.nostr1.com`). Every relay the monitor network has health-checked is auto-imported with its real NIP-11 doc, RTT, geohash, and NIP support — no manual submission needed
 - **Live NIP-66 monitoring** from trusted nostr.watch-style monitors — real-time online/offline status, RTT, geohash
 - **NIP-11 batch fetcher** — HTTP fetch of relay info documents with diff tracking
 - **Auto-tagging engine** — NIP support is automatically mapped to use-case tags (DMs, Zaps, Blossom, Privacy, Membership, Sync, etc.)

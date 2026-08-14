@@ -22,6 +22,7 @@ import {
   KIND_RELAY_DISCOVERY,
   KIND_MONITOR_ANNOUNCEMENT,
   TRUSTED_MONITOR_PUBKEYS,
+  NIP66_DATA_RELAYS,
 } from '@/lib/constants';
 
 // ─── NIP-66 parsed event data ─────────────────────────────────────────────
@@ -274,8 +275,9 @@ export function useNIP66Monitor() {
     queryFn: async (): Promise<NIP66MonitorMap> => {
       const twoHoursAgo = Math.floor(Date.now() / 1000) - 7200;
 
-      // Query from connected relays for recent monitor events
-      const events = await nostr.query([
+      // Query the NIP-66 data relay group (meta-relays first — richest data)
+      const relayGroup = nostr.group(NIP66_DATA_RELAYS);
+      const events = await relayGroup.query([
         {
           kinds: [KIND_RELAY_DISCOVERY],
           authors: TRUSTED_MONITOR_PUBKEYS,
@@ -319,7 +321,8 @@ export function useNIP66MultiMonitor() {
     queryFn: async (): Promise<NIP66MultiMonitorMap> => {
       const sixHoursAgo = Math.floor(Date.now() / 1000) - 21600;
 
-      const events = await nostr.query([
+      const relayGroup = nostr.group(NIP66_DATA_RELAYS);
+      const events = await relayGroup.query([
         {
           kinds: [KIND_RELAY_DISCOVERY],
           authors: TRUSTED_MONITOR_PUBKEYS,
@@ -367,7 +370,8 @@ export function useMonitorAnnouncements() {
   return useQuery({
     queryKey: ['nip66-monitor-announcements'],
     queryFn: async (): Promise<MonitorAnnouncement[]> => {
-      const events = await nostr.query([
+      const relayGroup = nostr.group(NIP66_DATA_RELAYS);
+      const events = await relayGroup.query([
         {
           kinds: [KIND_MONITOR_ANNOUNCEMENT],
           limit: 100,
@@ -388,6 +392,59 @@ export function useMonitorAnnouncements() {
       return Array.from(byPubkey.values()).sort((a, b) => b.announcedAt - a.announcedAt);
     },
     staleTime: 1000 * 60 * 10,
+    gcTime: 1000 * 60 * 60,
+    retry: 2,
+  });
+}
+
+/**
+ * Discovery feed: query kind:30166 from ALL monitors (no author filter).
+ * Every `d` tag is a relay URL that some monitor on the network has found
+ * and health-checked. This is how nostr.watch itself builds its directory —
+ * and it's the richest relay discovery source that exists on Nostr.
+ *
+ * Returns both the relay URLs AND their full observation data (RTT, NIPs,
+ * geohash, requirements) so discovered relays can be imported with
+ * real health data attached.
+ */
+export function useNIP66DiscoveryFeed(limit = 2000) {
+  const { nostr } = useNostr();
+
+  return useQuery({
+    queryKey: ['nip66-discovery-feed', limit],
+    queryFn: async (): Promise<NIP66MultiMonitorMap> => {
+      const threeDaysAgo = Math.floor(Date.now() / 1000) - 3 * 86400;
+
+      const relayGroup = nostr.group(NIP66_DATA_RELAYS);
+      const events = await relayGroup.query([
+        {
+          kinds: [KIND_RELAY_DISCOVERY],
+          since: threeDaysAgo,
+          limit,
+        },
+      ]);
+
+      const multiMap: NIP66MultiMonitorMap = new Map();
+
+      for (const event of events) {
+        const parsed = parseNIP66Event(event);
+        if (!parsed) continue;
+
+        let relayMap = multiMap.get(parsed.relayUrl);
+        if (!relayMap) {
+          relayMap = new Map();
+          multiMap.set(parsed.relayUrl, relayMap);
+        }
+
+        const existing = relayMap.get(parsed.monitorPubkey);
+        if (!existing || parsed.checkedAt > existing.checkedAt) {
+          relayMap.set(parsed.monitorPubkey, parsed);
+        }
+      }
+
+      return multiMap;
+    },
+    staleTime: 1000 * 60 * 15,
     gcTime: 1000 * 60 * 60,
     retry: 2,
   });

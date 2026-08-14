@@ -16,6 +16,7 @@ import {
   KIND_FOLLOW_LIST,
   KIND_RELAY_DISCOVERY,
   TRUSTED_MONITOR_PUBKEYS,
+  NIP66_DATA_RELAYS,
 } from '@/lib/constants';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -155,14 +156,17 @@ export function useRelayCrawler(knownRelayUrls: string[]) {
         console.warn('[RelayCrawler] kind:10002 query failed:', err);
       }
 
-      // 2. Query kind:30166 from monitors for relay URLs we don't know
+      // 2. Query kind:30166 from ALL monitors for relay URLs we don't know.
+      //    Every `d` tag is a relay some monitor has health-checked — this is
+      //    the same discovery source nostr.watch itself uses. We query the
+      //    dedicated NIP-66 meta-relays where monitors publish.
       try {
-        const monitorEvents = await nostr.query([
+        const relayGroup = nostr.group(NIP66_DATA_RELAYS);
+        const monitorEvents = await relayGroup.query([
           {
             kinds: [KIND_RELAY_DISCOVERY],
-            authors: TRUSTED_MONITOR_PUBKEYS,
             since: sixHoursAgo,
-            limit: 200,
+            limit: 500,
           },
         ]);
 
@@ -174,6 +178,10 @@ export function useRelayCrawler(knownRelayUrls: string[]) {
             if (existing) {
               existing.seenCount++;
               existing.source = 'kind:30166'; // upgrade source priority
+              // Track whether a trusted monitor has seen it
+              if (TRUSTED_MONITOR_PUBKEYS.includes(event.pubkey) && !existing.referencedBy.includes(event.pubkey)) {
+                existing.referencedBy.push(event.pubkey);
+              }
             } else {
               discoveryMap.set(url, {
                 url,

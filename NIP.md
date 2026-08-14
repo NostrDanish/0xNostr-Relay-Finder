@@ -19,7 +19,12 @@ All app data is published to and read from the full relay group:
 - `wss://relay.nostr.band`
 - `wss://relay.snort.social`
 
-Data is published to **all** relays and read from **all** of them, ensuring redundancy and broad reach.
+**NIP-66 meta-relays (read-only, monitoring data + relay discovery):**
+- `wss://relay.nostr.watch` (primary nostr.watch relay)
+- `wss://relaypag.es` (Relaypages NIP-66 relay)
+- `wss://monitorlizard.nostr1.com` (Monitor Lizard relay)
+
+App data (submissions, votes, labels, etc.) is published to our relays + public relays. NIP-66 monitoring data is read from the meta-relays where monitors publish — including kind:30166 from **all monitors** (not just trusted ones), which powers automatic relay discovery: every observed `d` tag is a relay the network has health-checked, and is auto-imported into the directory with its real RTT/NIP/geohash data attached.
 
 ## App Owner
 

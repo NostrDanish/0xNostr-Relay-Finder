@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
-import { Copy, Check, ExternalLink, Globe2, Clock, Wifi, Droplets, Download, Activity, Plus } from "lucide-react";
+import { Copy, Check, ExternalLink, Globe2, Clock, Wifi, Droplets, Download, Activity, Plus, Radar } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -119,6 +119,20 @@ export function RelayCard({ relay, view = "grid" }: RelayCardProps) {
                   <span className="text-xs bg-sky-500/10 text-sky-500 border border-sky-500/20 px-1.5 py-0.5 rounded-full font-medium flex items-center gap-0.5">
                     <Droplets className="w-2.5 h-2.5" /> Blossom
                   </span>
+                )}
+                {relay.id.startsWith("discovered:") && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="text-xs bg-cyan-500/10 text-cyan-500 border border-cyan-500/20 px-1.5 py-0.5 rounded-full font-medium flex items-center gap-0.5 cursor-help">
+                          <Radar className="w-2.5 h-2.5" /> Discovered
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p className="text-xs">Auto-discovered from the NIP-66 monitor network</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 )}
                 {relay.nip66 && <NIP66Badge data={relay.nip66} size="sm" />}
                 <TrustBadge relayUrl={relay.url} size="sm" />

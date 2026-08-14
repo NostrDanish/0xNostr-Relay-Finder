@@ -21,7 +21,7 @@ import {
   type NIP66MonitorEvent,
   type NIP66MultiMonitorMap,
 } from '@/hooks/useNIP66Monitor';
-import { KIND_RELAY_DISCOVERY, TRUSTED_MONITOR_PUBKEYS } from '@/lib/constants';
+import { KIND_RELAY_DISCOVERY, TRUSTED_MONITOR_PUBKEYS, NIP66_DATA_RELAYS } from '@/lib/constants';
 import type { LiveRelayRecord } from '@/hooks/useLiveRelayStore';
 
 // ─── Tri-state liveness ─────────────────────────────────────────────────────
@@ -238,7 +238,8 @@ export function useRelayMonitorHistory(relayUrl: string, days = 14) {
       const nowS = Math.floor(Date.now() / 1000);
       const sinceS = nowS - days * 24 * 3600;
 
-      const events = await nostr.query([
+      const relayGroup = nostr.group(NIP66_DATA_RELAYS);
+      const events = await relayGroup.query([
         {
           kinds: [KIND_RELAY_DISCOVERY],
           authors: TRUSTED_MONITOR_PUBKEYS,

@@ -176,6 +176,31 @@ export const KIND_FOLLOW_LIST = 3;
 export const RELAY_SUBMISSION_D_PREFIX = '0xrelay:';
 export const APPROVAL_D_PREFIX = '0xapproval:';
 
+// ─── NIP-66 Meta-Relays ───────────────────────────────────────────────────────
+/**
+ * Dedicated NIP-66 data relays where monitors publish kind:30166/10166 events.
+ * Learned from nostr.watch's config (apps/gui/config/nip66-relays.json).
+ * These are READ-ONLY sources for monitoring data — we never publish to them.
+ */
+export const NIP66_META_RELAYS = [
+  'wss://relay.nostr.watch',
+  'wss://relaypag.es',
+  'wss://monitorlizard.nostr1.com',
+];
+
+/**
+ * Relay group for NIP-66 monitoring data: meta-relays first (richest data),
+ * then our app relays + big indexers as fallback.
+ */
+export const NIP66_DATA_RELAYS = [
+  ...NIP66_META_RELAYS,
+  APP_RELAY_PRIMARY,
+  APP_RELAY_SECONDARY,
+  'wss://relay.nostr.band',
+  'wss://relay.damus.io',
+  'wss://nos.lol',
+];
+
 // ─── NIP-66 Trusted Monitors ─────────────────────────────────────────────────
 export const TRUSTED_MONITOR_PUBKEYS = [
   'cf45a6ba1363ad7ed213a078e710d24f2b7a9be1929acabb228084d29b3e08f8', // nostr.watch
