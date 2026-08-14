@@ -30,6 +30,7 @@ const NAV_LINKS = [
   { href: "/build", label: "Build Set" },
   { href: "/compare", label: "Compare" },
   { href: "/software", label: "Software" },
+  { href: "/monitors", label: "Monitors" },
   { href: "/protocols", label: "Protocols" },
 ];
 

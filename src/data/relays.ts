@@ -1,8 +1,15 @@
 import type { RelayRecord, CommunityTagVote, NIP66Data, ImportSource } from '@/types/relay';
 
-// Helper to create a realistic uptime sparkline
+// Helper to create a deterministic uptime sparkline (seed fallback only —
+// real observed uptime comes from kind:30166 history via useRelayMonitorHistory)
 function makeSpark(avg: number): number[] {
-  return Array.from({ length: 14 }, () => Math.random() < avg ? 1 : 0);
+  // Deterministic pseudo-random pattern seeded by the avg value itself,
+  // so the same relay always shows the same stable shape instead of
+  // flickering randomly on every render.
+  return Array.from({ length: 14 }, (_, i) => {
+    const seed = Math.sin(avg * 1000 + i * 12.9898) * 43758.5453;
+    return (seed - Math.floor(seed)) < avg ? 1 : 0;
+  });
 }
 
 // Helper to create community vote tags

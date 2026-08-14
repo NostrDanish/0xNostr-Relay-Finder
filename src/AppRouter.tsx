@@ -20,6 +20,7 @@ import { ExplorePage } from "@/pages/ExplorePage";
 import { AtlasPage } from "@/pages/AtlasPage";
 import { RelaySetsPage } from "@/pages/RelaySetsPage";
 import { ProtocolCoveragePage } from "@/pages/ProtocolCoveragePage";
+import { MonitorsPage } from "@/pages/MonitorsPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { useLiveRelayStore } from "@/hooks/useLiveRelayStore";
 
@@ -58,6 +59,7 @@ function AppLayout() {
           <Route path="/atlas" element={<AtlasPage />} />
           <Route path="/sets" element={<RelaySetsPage />} />
           <Route path="/protocols" element={<ProtocolCoveragePage />} />
+          <Route path="/monitors" element={<MonitorsPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </main>

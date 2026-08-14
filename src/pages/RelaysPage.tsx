@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useSeoMeta } from "@unhead/react";
 import { useSearchParams } from "react-router-dom";
-import { Grid3X3, List, Search, SlidersHorizontal, X } from "lucide-react";
+import { Grid3X3, List, Search, SlidersHorizontal, X, Download, FileJson } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -12,11 +12,14 @@ import { RelayFilters, type RelayFiltersState, DEFAULT_FILTERS } from "@/compone
 import { NIPFilterPresets } from "@/components/relay/NIPFilterPresets";
 import { useLiveRelayStore } from "@/hooks/useLiveRelayStore";
 import { filterRelays } from "@/lib/utils";
+import { exportRelaysAsJson, exportRelaysAsCsv, exportRelaysAsList } from "@/lib/relayExport";
+import { useToast } from "@/hooks/useToast";
 import type { UseCaseTag, RelayRecord } from "@/types/relay";
 
 export function RelaysPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { relays, loading, stats } = useLiveRelayStore();
+  const { toast } = useToast();
   const [view, setView] = useState<"grid" | "list">("grid");
   const [search, setSearch] = useState(searchParams.get("q") ?? "");
 
@@ -160,6 +163,32 @@ export function RelaysPage() {
             title="List view"
           >
             <List className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Export — relays.json parity with nostr.watch */}
+        <div className="flex border border-border rounded-lg overflow-hidden h-10">
+          <button
+            onClick={() => {
+              exportRelaysAsJson(filtered as never);
+              toast({ title: `Exported ${filtered.length} relays as JSON` });
+            }}
+            className="px-3 flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors text-xs font-medium"
+            title="Download filtered relays as JSON"
+          >
+            <FileJson className="w-4 h-4" />
+            <span className="hidden sm:inline">JSON</span>
+          </button>
+          <button
+            onClick={() => {
+              exportRelaysAsCsv(filtered as never);
+              toast({ title: `Exported ${filtered.length} relays as CSV` });
+            }}
+            className="px-3 flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors text-xs font-medium border-l border-border"
+            title="Download filtered relays as CSV"
+          >
+            <Download className="w-4 h-4" />
+            <span className="hidden sm:inline">CSV</span>
           </button>
         </div>
 

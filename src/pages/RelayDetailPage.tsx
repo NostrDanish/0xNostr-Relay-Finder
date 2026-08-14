@@ -29,6 +29,10 @@ import { RelayCommentSection } from "@/components/relay/RelayCommentSection";
 import { RelayLabelPanel } from "@/components/relay/RelayLabelPanel";
 import { RelayMembershipPanel } from "@/components/relay/RelayMembershipPanel";
 import { RelayManagementPanel } from "@/components/relay/RelayManagementPanel";
+import { MonitorConsensusCard } from "@/components/relay/MonitorConsensusCard";
+import { RealUptimePanel } from "@/components/relay/RealUptimePanel";
+import { PeerBenchmarksCard } from "@/components/relay/PeerBenchmarksCard";
+import { Nip11ValidationCard } from "@/components/relay/Nip11ValidationCard";
 import { FavoriteButton, TrustBadge, LabelBadges } from "@/components/relay/RelayCardExtras";
 import { useRelayById } from "@/hooks/useRelayData";
 import { useRelayTest } from "@/hooks/useRelayTest";
@@ -738,6 +742,9 @@ export function RelayDetailPage() {
               <OperatorProfile pubkey={effectiveNip11.pubkey} />
             )}
           </div>
+
+          {/* NIP-11 document validation */}
+          <Nip11ValidationCard nip11={effectiveNip11} />
         </TabsContent>
 
         {/* Verify Tab */}
@@ -763,6 +770,12 @@ export function RelayDetailPage() {
             ))}
           </div>
 
+          {/* Real observed uptime from NIP-66 monitor history */}
+          <RealUptimePanel relayUrl={relay.url} />
+
+          {/* Peer percentile benchmarks */}
+          <PeerBenchmarksCard relay={relay as LiveRelayRecord} />
+
           <Card className="border-border/60">
             <CardHeader className="pb-3">
               <CardTitle className="text-base">Uptime History</CardTitle>
@@ -771,39 +784,13 @@ export function RelayDetailPage() {
               <UptimeHistoryChart relay={relay} />
             </CardContent>
           </Card>
-
-          <Card className="border-border/60">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Recent Checks (14 points)</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-end gap-1 h-12">
-                {relay.uptimeSpark.map((v, i) => (
-                  <TooltipProvider key={i}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <div
-                          className={`flex-1 rounded transition-all cursor-help ${v === 1 ? "bg-emerald-500" : "bg-red-500/60"}`}
-                          style={{ height: v === 1 ? "100%" : "30%" }}
-                        />
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p className="text-xs">{v === 1 ? "✅ Online" : "❌ Offline"}</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                ))}
-              </div>
-              <div className="flex justify-between text-xs text-muted-foreground mt-2">
-                <span>14 checks ago</span>
-                <span>Most recent</span>
-              </div>
-            </CardContent>
-          </Card>
         </TabsContent>
 
         {/* NIP-66 Tab */}
         <TabsContent value="nip66" className="space-y-4">
+          {/* Multi-monitor consensus — always shown, even without seed enrichment */}
+          <MonitorConsensusCard relayUrl={relay.url} />
+
           {!relay.nip66?.enriched && !monitorEvent ? (
             <Card className="border-border/60">
               <CardContent className="py-10 text-center">

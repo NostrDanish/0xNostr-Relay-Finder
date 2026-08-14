@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { Copy, Check, ExternalLink, Globe2, Clock, Wifi, Droplets, Download, Activity, Plus } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -24,6 +24,19 @@ interface RelayCardProps {
 
 export function RelayCard({ relay, view = "grid" }: RelayCardProps) {
   const [copied, setCopied] = useState(false);
+  const [flash, setFlash] = useState(false);
+  const prevStatusRef = useRef<boolean | undefined>(undefined);
+
+  // Flash animation when live status changes (nostr.watch-style live feedback)
+  const currentStatus = (relay as LiveRelayRecord).liveOnline ?? relay.isOnline;
+  useEffect(() => {
+    if (prevStatusRef.current !== undefined && prevStatusRef.current !== currentStatus) {
+      setFlash(true);
+      const t = setTimeout(() => setFlash(false), 1500);
+      return () => clearTimeout(t);
+    }
+    prevStatusRef.current = currentStatus;
+  }, [currentStatus]);
 
   const handleCopy = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -88,7 +101,7 @@ export function RelayCard({ relay, view = "grid" }: RelayCardProps) {
 
   return (
     <Link to={`/relay/${relayUrlToId(relay.url)}`} className="block">
-      <Card className="relay-card border-border/60 h-full bg-card overflow-hidden">
+      <Card className={`relay-card border-border/60 h-full bg-card overflow-hidden transition-shadow ${flash ? "ring-2 ring-primary/60 shadow-lg shadow-primary/20" : ""}`}>
         {/* Top accent line */}
         <div className={`h-0.5 w-full ${relay.isOnline ? "bg-gradient-to-r from-emerald-500/50 via-primary/50 to-transparent" : "bg-gradient-to-r from-red-500/50 to-transparent"}`} />
 
