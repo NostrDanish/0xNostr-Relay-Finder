@@ -271,8 +271,9 @@ export function useRelayMonitorHistory(relayUrl: string, days = 14) {
         const bucketStart = Math.floor(tsMs / bucketMs) * bucketMs;
         const bucket = buckets.get(bucketStart) ?? { online: false, rtts: [] };
         bucket.online = true; // Monitors only publish 30166 for reachable relays
-        const rtt = event.tags.find(([t]) => t === 'rtt-open')?.[1];
-        if (rtt) bucket.rtts.push(parseInt(rtt));
+        const rttTag = event.tags.find(([t]) => t === 'rtt-open')?.[1];
+        const rtt = rttTag ? parseInt(rttTag) : NaN;
+        if (!isNaN(rtt)) bucket.rtts.push(rtt);
         buckets.set(bucketStart, bucket);
       }
 

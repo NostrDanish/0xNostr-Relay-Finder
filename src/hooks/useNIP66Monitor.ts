@@ -104,155 +104,179 @@ export interface MonitorAnnouncement {
 }
 
 function parseMonitorAnnouncement(event: NostrEvent): MonitorAnnouncement | null {
-  const checks = event.tags.filter(([t]) => t === 'c').map(([, v]) => v);
-  const networks = event.tags.filter(([t]) => t === 'n').map(([, v]) => v);
-  const publishedKinds = event.tags
-    .filter(([t]) => t === 'k')
-    .map(([, v]) => parseInt(v))
-    .filter((n) => !isNaN(n));
+  try {
+    const checks = tagValues(event, 'c');
+    const networks = tagValues(event, 'n');
+    const publishedKinds = tagValues(event, 'k')
+      .map((v) => parseInt(v))
+      .filter((n) => !isNaN(n));
 
-  const frequency = event.tags.find(([t]) => t === 'frequency')?.[1];
-  const geohash = event.tags.find(([t]) => t === 'g')?.[1];
-  const client = event.tags.find(([t]) => t === 'client')?.[1];
+    const frequency = tagValue(event, 'frequency');
+    const geohash = tagValue(event, 'g');
+    const client = tagValue(event, 'client');
 
-  const timeouts: Record<string, number> = {};
-  for (const tag of event.tags.filter(([t]) => t === 'timeout')) {
-    // ["timeout", "open", "5000"] — index 1 = check type, index 2 = ms
-    // (some monitors use ["timeout", "5000", "open"])
-    const [, a, b] = tag;
-    if (a && b) {
-      if (isNaN(parseInt(a))) timeouts[a] = parseInt(b);
-      else timeouts[b] = parseInt(a);
-    } else if (a && !isNaN(parseInt(a))) {
-      timeouts.all = parseInt(a);
+    const timeouts: Record<string, number> = {};
+    for (const tag of event.tags) {
+      if (tag[0] !== 'timeout') continue;
+      const [, a, b] = tag;
+      // ["timeout", "open", "5000"] or ["timeout", "5000", "open"]
+      if (typeof a === 'string' && typeof b === 'string') {
+        if (isNaN(parseInt(a))) timeouts[a] = parseInt(b);
+        else timeouts[b] = parseInt(a);
+      } else if (typeof a === 'string' && !isNaN(parseInt(a))) {
+        timeouts.all = parseInt(a);
+      }
     }
-  }
 
-  return {
-    pubkey: event.pubkey,
-    frequency: frequency ? parseInt(frequency) : undefined,
-    checks,
-    timeouts,
-    geohash,
-    networks,
-    publishedKinds,
-    client,
-    announcedAt: event.created_at,
-    rawEvent: event,
-  };
+    return {
+      pubkey: event.pubkey,
+      frequency: frequency ? parseInt(frequency) : undefined,
+      checks,
+      timeouts,
+      geohash,
+      networks,
+      publishedKinds,
+      client,
+      announcedAt: event.created_at,
+      rawEvent: event,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /**
- * Parse a kind:30166 event into structured NIP66MonitorEvent
+ * Safely extract string values for a tag name — skips tags with missing
+ * or non-string values (common in wild NIP-66 events from random monitors).
+ */
+function tagValues(event: NostrEvent, name: string): string[] {
+  return event.tags
+    .filter((tag) => tag[0] === name && typeof tag[1] === 'string' && tag[1].length > 0)
+    .map((tag) => tag[1]);
+}
+
+/** Safely get the first string value of a tag. */
+function tagValue(event: NostrEvent, name: string): string | undefined {
+  return tagValues(event, name)[0];
+}
+
+/**
+ * Parse a kind:30166 event into structured NIP66MonitorEvent.
+ * Defensive: wild network data may contain malformed tags — never throw.
  */
 function parseNIP66Event(event: NostrEvent): NIP66MonitorEvent | null {
-  const dTag = event.tags.find(([t]) => t === 'd')?.[1];
-  if (!dTag) return null;
+  try {
+    const dTag = tagValue(event, 'd');
+    if (!dTag || !dTag.startsWith('ws')) return null;
 
-  // Parse RTT values
-  const rttOpen = event.tags.find(([t]) => t === 'rtt-open')?.[1];
-  const rttRead = event.tags.find(([t]) => t === 'rtt-read')?.[1];
-  const rttWrite = event.tags.find(([t]) => t === 'rtt-write')?.[1];
+    // Parse RTT values
+    const rttOpen = tagValue(event, 'rtt-open');
+    const rttRead = tagValue(event, 'rtt-read');
+    const rttWrite = tagValue(event, 'rtt-write');
 
-  // Parse network/type
-  const network = event.tags.find(([t]) => t === 'n')?.[1];
-  const relayType = event.tags.find(([t]) => t === 'T')?.[1];
+    // Parse network/type
+    const network = tagValue(event, 'n');
+    const relayType = tagValue(event, 'T');
 
-  // Parse supported NIPs from N tags
-  const supportedNips = event.tags
-    .filter(([t]) => t === 'N')
-    .map(([, v]) => parseInt(v))
-    .filter((n) => !isNaN(n));
+    // Parse supported NIPs from N tags
+    const supportedNips = tagValues(event, 'N')
+      .map((v) => parseInt(v))
+      .filter((n) => !isNaN(n));
 
-  // Parse R tags — both requirements and capability checks
-  const rTags = event.tags.filter(([t]) => t === 'R').map(([, v]) => v);
-  const rHas = (key: string) => rTags.includes(key) && !rTags.includes(`!${key}`);
-  const requirements = {
-    auth: rHas('auth'),
-    payment: rHas('payment'),
-    pow: rHas('pow'),
-    writes: !rTags.includes('!writes'),
-  };
-  const checks: NIP66MonitorEvent['checks'] = {};
-  if (rTags.includes('open') || rTags.includes('!open')) checks.open = rHas('open');
-  if (rTags.includes('read') || rTags.includes('!read')) checks.read = rHas('read');
-  if (rTags.includes('write') || rTags.includes('!write')) checks.write = rHas('write');
-  if (rTags.includes('ssl') || rTags.includes('!ssl')) checks.ssl = rHas('ssl');
+    // Parse R tags — both requirements and capability checks
+    const rTags = tagValues(event, 'R');
+    const rHas = (key: string) => rTags.includes(key) && !rTags.includes(`!${key}`);
+    const requirements = {
+      auth: rHas('auth'),
+      payment: rHas('payment'),
+      pow: rHas('pow'),
+      writes: !rTags.includes('!writes'),
+    };
+    const checks: NIP66MonitorEvent['checks'] = {};
+    if (rTags.includes('open') || rTags.includes('!open')) checks.open = rHas('open');
+    if (rTags.includes('read') || rTags.includes('!read')) checks.read = rHas('read');
+    if (rTags.includes('write') || rTags.includes('!write')) checks.write = rHas('write');
+    if (rTags.includes('ssl') || rTags.includes('!ssl')) checks.ssl = rHas('ssl');
 
-  // Parse geohashes (all precisions; keep longest as primary)
-  const geohashes = event.tags.filter(([t]) => t === 'g').map(([, v]) => v);
-  const geohash = geohashes.sort((a, b) => b.length - a.length)[0];
+    // Parse geohashes (all precisions; keep longest as primary)
+    const geohashes = tagValues(event, 'g');
+    const geohash = [...geohashes].sort((a, b) => b.length - a.length)[0];
 
-  // Parse language tags — only those with ISO-639-1 namespace or bare values
-  const languages = event.tags
-    .filter(([t, , ns]) => t === 'l' && (!ns || ns === 'ISO-639-1'))
-    .map(([, v]) => v);
+    // Parse language tags — only those with ISO-639-1 namespace or bare values
+    const languages = event.tags
+      .filter((tag) => tag[0] === 'l' && typeof tag[1] === 'string' && tag[1].length > 0 && (!tag[2] || tag[2] === 'ISO-639-1'))
+      .map((tag) => tag[1]);
 
-  // Parse topic tags
-  const topics = event.tags
-    .filter(([t]) => t === 't')
-    .map(([, v]) => v);
+    // Parse topic tags
+    const topics = tagValues(event, 't');
 
-  // Parse accepted/rejected kinds from k tags
-  const kTags = event.tags.filter(([t]) => t === 'k').map(([, v]) => v);
-  const acceptedKinds = kTags
-    .filter((v) => !v.startsWith('!'))
-    .map((v) => parseInt(v))
-    .filter((n) => !isNaN(n));
-  const rejectedKinds = kTags
-    .filter((v) => v.startsWith('!'))
-    .map((v) => parseInt(v.slice(1)))
-    .filter((n) => !isNaN(n));
+    // Parse accepted/rejected kinds from k tags
+    const kTags = tagValues(event, 'k');
+    const acceptedKinds = kTags
+      .filter((v) => !v.startsWith('!'))
+      .map((v) => parseInt(v))
+      .filter((n) => !isNaN(n));
+    const rejectedKinds = kTags
+      .filter((v) => v.startsWith('!'))
+      .map((v) => parseInt(v.slice(1)))
+      .filter((n) => !isNaN(n));
 
-  // Parse software, operator pubkey
-  const software = event.tags.find(([t]) => t === 's')?.[1];
-  const operatorPubkey = event.tags.find(([t]) => t === 'p')?.[1];
+    // Parse software, operator pubkey
+    const software = tagValue(event, 's');
+    const operatorPubkey = tagValue(event, 'p');
 
-  // Parse SSL / ISP / AS fields (monitors that run ssl/dns/geo checks include these)
-  const sslValidTo = event.tags.find(([t]) => t === 'sslValidTo' || t === 'ssl-valid-to')?.[1];
-  const sslIssuer = event.tags.find(([t]) => t === 'sslIssuer' || t === 'ssl-issuer')?.[1];
-  const isp = event.tags.find(([t]) => t === 'isp')?.[1];
-  const asNumber = event.tags.find(([t]) => t === 'as')?.[1];
-  const asName = event.tags.find(([t]) => t === 'asname')?.[1];
+    // Parse SSL / ISP / AS fields (monitors that run ssl/dns/geo checks include these)
+    const sslValidTo = tagValue(event, 'sslValidTo') ?? tagValue(event, 'ssl-valid-to');
+    const sslIssuer = tagValue(event, 'sslIssuer') ?? tagValue(event, 'ssl-issuer');
+    const isp = tagValue(event, 'isp');
+    const asNumber = tagValue(event, 'as');
+    const asName = tagValue(event, 'asname');
 
-  // Try to parse NIP-11 from content
-  let nip11: NIP11Info | undefined;
-  if (event.content) {
-    try {
-      nip11 = JSON.parse(event.content) as NIP11Info;
-    } catch {
-      // Content is not JSON, that's fine
+    // Try to parse NIP-11 from content
+    let nip11: NIP11Info | undefined;
+    if (event.content) {
+      try {
+        const parsed = JSON.parse(event.content);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          nip11 = parsed as NIP11Info;
+        }
+      } catch {
+        // Content is not JSON, that's fine
+      }
     }
-  }
 
-  return {
-    relayUrl: dTag,
-    monitorPubkey: event.pubkey,
-    checkedAt: event.created_at,
-    rttOpen: rttOpen ? parseInt(rttOpen) : undefined,
-    rttRead: rttRead ? parseInt(rttRead) : undefined,
-    rttWrite: rttWrite ? parseInt(rttWrite) : undefined,
-    network,
-    relayType,
-    supportedNips,
-    requirements,
-    checks,
-    geohash,
-    geohashes,
-    languages,
-    topics,
-    acceptedKinds,
-    rejectedKinds,
-    software,
-    operatorPubkey,
-    sslValidTo: sslValidTo ? parseInt(sslValidTo) : undefined,
-    sslIssuer,
-    isp,
-    asNumber,
-    asName,
-    nip11,
-    rawEvent: event,
-  };
+    return {
+      relayUrl: dTag,
+      monitorPubkey: event.pubkey,
+      checkedAt: event.created_at,
+      rttOpen: rttOpen ? parseInt(rttOpen) : undefined,
+      rttRead: rttRead ? parseInt(rttRead) : undefined,
+      rttWrite: rttWrite ? parseInt(rttWrite) : undefined,
+      network,
+      relayType,
+      supportedNips,
+      requirements,
+      checks,
+      geohash,
+      geohashes,
+      languages,
+      topics,
+      acceptedKinds,
+      rejectedKinds,
+      software,
+      operatorPubkey,
+      sslValidTo: sslValidTo ? parseInt(sslValidTo) : undefined,
+      sslIssuer,
+      isp,
+      asNumber,
+      asName,
+      nip11,
+      rawEvent: event,
+    };
+  } catch {
+    // Malformed event — skip it silently (wild monitor data)
+    return null;
+  }
 }
 
 /** Map of relay URL → latest NIP66MonitorEvent (best across monitors) */

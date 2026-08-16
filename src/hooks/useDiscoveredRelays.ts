@@ -53,6 +53,7 @@ function autoTagFromNips(nips: number[]): UseCaseTag[] {
 /**
  * Build a minimal RelayRecord from a NIP-66 observation.
  * Uses the NIP-11 document embedded in the event content when available.
+ * Defensive: wild network data may be malformed — never throw.
  */
 function observationToRecord(
   relayUrl: string,
@@ -63,16 +64,27 @@ function observationToRecord(
   const nip11 = best.nip11 ?? {};
   const nips = best.supportedNips.length > 0
     ? best.supportedNips
-    : (nip11.supported_nips ?? []);
+    : (Array.isArray(nip11.supported_nips) ? nip11.supported_nips.filter((n) => typeof n === 'number') : []);
 
-  const name = nip11.name ?? best.software ?? new URL(relayUrl.replace(/^wss?:\/\//, 'https://')).hostname;
-  const description = nip11.description
-    ?? `Discovered via NIP-66 monitor network. ${monitorCount} monitor${monitorCount !== 1 ? 's have' : ' has'} observed this relay.`;
+  // Derive a display name: NIP-11 name → software → hostname → URL
+  let hostname = relayUrl;
+  try {
+    hostname = new URL(relayUrl.replace(/^wss?:\/\//, 'https://')).hostname || relayUrl;
+  } catch {
+    // keep relayUrl as-is
+  }
+  const rawName = nip11.name ?? best.software;
+  const name = (typeof rawName === 'string' && rawName.length > 0) ? rawName.slice(0, 60) : hostname;
+  const description = (typeof nip11.description === 'string' && nip11.description.length > 0)
+    ? nip11.description.slice(0, 500)
+    : `Discovered via NIP-66 monitor network. ${monitorCount} monitor${monitorCount !== 1 ? 's have' : ' has'} observed this relay.`;
 
   // Trust: discovered relays start low, scale with monitor coverage
   const trustScore = trustedMonitorSeen
     ? Math.min(40 + monitorCount * 10, 80)
     : Math.min(20 + monitorCount * 5, 50);
+
+  const blossomSupported = nips.includes(94) || nips.includes(96);
 
   return {
     id: `discovered:${relayUrl}`,
@@ -102,7 +114,7 @@ function observationToRecord(
     trustScore,
     operatorNpub: nip11.pubkey ?? best.operatorPubkey,
     websiteUrl: undefined,
-    blossomSupported: nips.includes(94) || nips.includes(96),
+    blossomSupported,
     nip66: {
       enriched: true,
       lastMonitorEvent: best.checkedAt * 1000,
@@ -113,7 +125,7 @@ function observationToRecord(
         read: best.checks.read ?? true,
         write: best.checks.write ?? true,
         relay: true,
-        blossom: nips.includes(94) || nips.includes(96),
+        blossom: blossomSupported,
         hasNip11: !!best.nip11,
       },
       conflictsWithNip11: false,
