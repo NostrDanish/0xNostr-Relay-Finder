@@ -847,7 +847,7 @@ export function RelayDetailPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2">
-                  {relay.nip66.capabilities && Object.entries(relay.nip66.capabilities).map(([cap, val]) => (
+                  {relay.nip66?.capabilities && Object.entries(relay.nip66.capabilities).map(([cap, val]) => (
                     <div key={cap} className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground capitalize">{cap.replace(/([A-Z])/g, ' $1')}</span>
                       {val ? (

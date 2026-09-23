@@ -22,6 +22,7 @@ import type { RelayRecord, NIP66Data, NIP11Info } from '@/types/relay';
 import { useRelayData } from '@/hooks/useRelayData';
 import { useNIP66Monitor, type NIP66MonitorEvent } from '@/hooks/useNIP66Monitor';
 import { useNIP11Batch, type NIP11CacheEntry, type NIP11CacheMap } from '@/hooks/useNIP11Batch';
+import { normalizeRelayUrl } from '@/lib/relayUrl';
 
 // ─── Extended relay record with live fields ────────────────────────────────
 
@@ -92,8 +93,18 @@ function enrichWithNIP66(
 ): Partial<LiveRelayRecord> {
   if (!monitorEvent) return {};
 
+  // Liveness: monitors publish kind:30166 for FAILED checks too (R-tag
+  // `!open`, no rtt-open). Online only when the open check didn't fail AND
+  // an open RTT was actually measured.
+  const isOnline = monitorEvent.checks.open !== false && monitorEvent.rttOpen != null;
+
+  // Blossom support per the monitor's published NIP list (NIP-94/96),
+  // consistent with useDiscoveredRelays.
+  const blossomSupported =
+    monitorEvent.supportedNips.includes(94) || monitorEvent.supportedNips.includes(96);
+
   return {
-    liveOnline: true, // If we have a recent event, relay is online
+    liveOnline: isOnline,
     liveLatencyMs: monitorEvent.rttOpen,
     liveRttRead: monitorEvent.rttRead,
     liveRttWrite: monitorEvent.rttWrite,
@@ -101,19 +112,21 @@ function enrichWithNIP66(
     geohash: monitorEvent.geohash,
     relayTypeNIP66: monitorEvent.relayType,
     networkType: monitorEvent.network,
-    monitorRequirements: monitorEvent.requirements,
+    monitorRequirements: monitorEvent.requirements
+      ? { ...monitorEvent.requirements, writes: monitorEvent.requirements.writes ?? true }
+      : undefined,
     // Update NIP-66 data on the record
     nip66: {
       enriched: true,
       lastMonitorEvent: monitorEvent.checkedAt * 1000,
-      liveStatus: 'online',
+      liveStatus: isOnline ? 'online' : 'offline',
       monitorLatencyMs: monitorEvent.rttOpen,
       monitorPubkey: monitorEvent.monitorPubkey,
       capabilities: {
-        read: !monitorEvent.requirements || monitorEvent.requirements.writes,
-        write: !monitorEvent.requirements || monitorEvent.requirements.writes,
+        read: monitorEvent.checks.read ?? true,
+        write: monitorEvent.requirements?.writes ?? true,
         relay: true,
-        blossom: monitorEvent.topics.includes('blossom'),
+        blossom: blossomSupported,
         hasNip11: !!monitorEvent.nip11,
       },
       conflictsWithNip11: relay.nip66?.conflictsWithNip11 ?? false,
@@ -163,13 +176,34 @@ export function useLiveRelayStore() {
   // NIP-11 batch fetcher
   const { data: nip11Cache, isLoading: nip11Loading } = useNIP11Batch(relayUrls);
 
+  // Re-key the monitor and NIP-11 maps by canonical URL so lookups match
+  // regardless of case, trailing slashes, default ports, or ws:// scheme.
+  const normalizedMonitorMap = useMemo(() => {
+    if (!monitorMap) return undefined;
+    const normalized = new Map<string, NIP66MonitorEvent>();
+    for (const [url, event] of monitorMap) {
+      normalized.set(normalizeRelayUrl(url) ?? url, event);
+    }
+    return normalized;
+  }, [monitorMap]);
+
+  const normalizedNip11Cache = useMemo(() => {
+    if (!nip11Cache) return undefined;
+    const normalized: NIP11CacheMap = new Map();
+    for (const [url, entry] of nip11Cache) {
+      normalized.set(normalizeRelayUrl(url) ?? url, entry);
+    }
+    return normalized;
+  }, [nip11Cache]);
+
   // Merge all sources into enriched relay records
   const liveRelays = useMemo<LiveRelayRecord[]>(() => {
     if (!baseRelays.length) return [];
 
     return baseRelays.map((relay) => {
-      const monitorEvent = monitorMap?.get(relay.url);
-      const nip11Entry = nip11Cache?.get(relay.url);
+      const lookupUrl = normalizeRelayUrl(relay.url) ?? relay.url;
+      const monitorEvent = normalizedMonitorMap?.get(lookupUrl);
+      const nip11Entry = normalizedNip11Cache?.get(lookupUrl);
 
       const nip66Enrichment = enrichWithNIP66(relay, monitorEvent);
       const nip11Enrichment = enrichWithNIP11(relay, nip11Entry);
@@ -209,7 +243,7 @@ export function useLiveRelayStore() {
 
       return live;
     });
-  }, [baseRelays, monitorMap, nip11Cache]);
+  }, [baseRelays, normalizedMonitorMap, normalizedNip11Cache]);
 
   // Compute live network stats
   const stats = useMemo<LiveNetworkStats>(() => {
@@ -221,7 +255,6 @@ export function useLiveRelayStore() {
       ? Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length)
       : 0;
 
-    const allNips = liveRelays.flatMap((r) => r.nip11.supported_nips ?? []);
     const nipCounts = (nip: number) =>
       liveRelays.filter((r) => (r.nip11.supported_nips ?? []).includes(nip)).length;
 
@@ -266,8 +299,8 @@ export function useLiveRelayStore() {
     enriching,
     /** NIP-11 cache map (for per-relay freshness info) */
     nip11Cache: nip11Cache ?? (new Map() as NIP11CacheMap),
-    /** NIP-66 monitor map (for per-relay monitor data) */
-    monitorMap: monitorMap ?? new Map(),
+    /** NIP-66 monitor map (for per-relay monitor data), keyed by canonical URL */
+    monitorMap: normalizedMonitorMap ?? new Map(),
     /** Number of relays auto-discovered from the NIP-66 monitor network */
     discoveredCount: discoveredCount ?? 0,
     /** Total relays observed by monitors (before directory cap) */

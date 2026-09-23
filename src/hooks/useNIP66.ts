@@ -7,26 +7,26 @@ import {
   TRUSTED_MONITOR_PUBKEYS,
 } from '@/lib/constants';
 
-interface NIP66EventContent {
-  network?: string;
-  software?: string;
-  version?: string;
-  read?: boolean;
-  write?: boolean;
-  blossom?: boolean;
-}
-
 interface NIP66Tags {
   r?: string;
   R?: string;
   n?: string;
   N?: string;
-  rtt?: string;
+  ['rtt-open']?: string;
+  ['rtt-read']?: string;
+  ['rtt-write']?: string;
   up?: string;
   ts?: string;
   c?: string;
   T?: string;
   d?: string;
+}
+
+/** Parse an integer tag value, guarding against NaN/garbage. */
+function parseIntTag(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const n = parseInt(value, 10);
+  return Number.isFinite(n) ? n : undefined;
 }
 
 function parseTagsToObject(tags: string[][]): NIP66Tags {
@@ -58,60 +58,77 @@ export function useNIP66Fetch() {
     setResult({ status: 'fetching', data: null, monitorCount: 0 });
 
     try {
-      // Query kind:30166 events for this relay (d-tag = relay url)
-      const events = await nostr.query([
-        {
-          kinds: [KIND_RELAY_DISCOVERY],
-          '#d': [relayUrl],
-          authors: TRUSTED_MONITOR_PUBKEYS,
-          limit: 5,
-        },
-        {
-          kinds: [KIND_MONITOR_ANNOUNCEMENT],
-          '#d': [relayUrl],
-          authors: TRUSTED_MONITOR_PUBKEYS,
-          limit: 5,
-        },
+      // Query kind:30166 relay discovery events for this relay (d-tag = relay url).
+      // Kind:10166 monitor announcements are queried separately WITHOUT a #d
+      // filter — a 10166's d-tag is the monitor's own identifier, not a relay URL.
+      const [discoveryEvents, announcementEvents] = await Promise.all([
+        nostr.query(
+          [
+            {
+              kinds: [KIND_RELAY_DISCOVERY],
+              '#d': [relayUrl],
+              authors: TRUSTED_MONITOR_PUBKEYS,
+              limit: 5,
+            },
+          ],
+          { signal: AbortSignal.timeout(10_000) },
+        ),
+        nostr.query(
+          [
+            {
+              kinds: [KIND_MONITOR_ANNOUNCEMENT],
+              authors: TRUSTED_MONITOR_PUBKEYS,
+              limit: 20,
+            },
+          ],
+          { signal: AbortSignal.timeout(10_000) },
+        ),
       ]);
 
-      if (!events.length) {
-        setResult({ status: 'not_found', data: null, monitorCount: 0 });
+      // Only kind:30166 events are relay observations. A 10166 must never be
+      // parsed as a relay observation (its tags mean monitor metadata).
+      const relayEvents = discoveryEvents.filter((e) => e.kind === KIND_RELAY_DISCOVERY);
+
+      if (!relayEvents.length) {
+        const monitorCount = new Set(announcementEvents.map((e) => e.pubkey)).size;
+        setResult({ status: 'not_found', data: null, monitorCount });
         return;
       }
 
-      // Sort by newest first
-      const sorted = [...events].sort((a, b) => b.created_at - a.created_at);
+      // Sort by newest first and take the latest kind:30166 observation
+      const sorted = [...relayEvents].sort((a, b) => b.created_at - a.created_at);
       const latest = sorted[0];
       const tags = parseTagsToObject(latest.tags);
 
-      let content: NIP66EventContent = {};
-      try {
-        content = JSON.parse(latest.content) as NIP66EventContent;
-      } catch {
-        // non-JSON content is fine
-      }
+      // Parse RTT from the rtt-open tag (guarded against NaN)
+      const rttMs = parseIntTag(tags['rtt-open']);
 
-      // Parse RTT from tag
-      const rttMs = tags.rtt ? parseInt(tags.rtt) : undefined;
+      // R tags: requirements/capability checks. A `!`-prefixed value means the
+      // check FAILED (e.g. ["R", "!open"] = relay failed the open check).
+      const rValues = latest.tags.filter((t) => t[0] === 'R').map((t) => t[1]);
 
-      // Parse capabilities
-      const capsTag = latest.tags.find(t => t[0] === 'c');
-      const capStr = capsTag ? capsTag.slice(1).join(',') : '';
-
+      // Capabilities derived from R tags per NIP-66
       const capabilities = {
-        read: capStr.includes('read') || content.read === true,
-        write: capStr.includes('write') || content.write === true,
+        read: !(rValues.includes('!open') || rValues.includes('!reads') || rValues.includes('!read')),
+        write: !(rValues.includes('!writes') || rValues.includes('!write')),
         relay: true,
-        blossom: capStr.includes('blossom') || content.blossom === true,
-        hasNip11: latest.tags.some(t => t[0] === 'N' && t[1] === '11'),
+        blossom: false,
+        hasNip11: latest.tags.some((t) => t[0] === 'N' && t[1] === '11'),
       };
 
-      // Status tag
-      const statusTag = latest.tags.find(t => t[0] === 'T' || t[0] === 'status');
-      const liveStatusRaw = statusTag?.[1];
-      let liveStatus: NIP66Data['liveStatus'] = 'online';
-      if (liveStatusRaw === 'offline' || liveStatusRaw === '0') liveStatus = 'offline';
-      else if (liveStatusRaw === 'degraded') liveStatus = 'degraded';
+      // The T tag is the relay TYPE (e.g. PublicOutbox), NOT a status flag.
+      // Liveness comes from the R tags plus event freshness instead.
+      const ageMs = Date.now() - latest.created_at * 1000;
+      const isFresh = ageMs <= 6 * 3600 * 1000; // 6h
+      let liveStatus: NIP66Data['liveStatus'];
+      if (rValues.includes('!open')) {
+        liveStatus = 'offline';
+      } else if (rValues.includes('open') || rttMs !== undefined) {
+        liveStatus = isFresh ? 'online' : 'degraded';
+      } else {
+        // No open-check info — don't blindly claim online
+        liveStatus = isFresh ? 'degraded' : 'offline';
+      }
 
       const nip66Data: NIP66Data = {
         enriched: true,
@@ -123,7 +140,12 @@ export function useNIP66Fetch() {
         conflictsWithNip11: false,
       };
 
-      const uniqueMonitors = new Set(events.map(e => e.pubkey)).size;
+      // Monitors = distinct pubkeys that published either observations or
+      // announcements (10166 events carry the monitor metadata).
+      const uniqueMonitors = new Set([
+        ...relayEvents.map((e) => e.pubkey),
+        ...announcementEvents.map((e) => e.pubkey),
+      ]).size;
 
       setResult({ status: 'found', data: nip66Data, monitorCount: uniqueMonitors });
     } catch (err) {
@@ -156,7 +178,10 @@ export function parseMonitorAnnouncement(event: { pubkey: string; tags: string[]
   for (const [key, ...vals] of event.tags) {
     if (key === 'name') monitor.name = vals[0];
     if (key === 'about' || key === 'description') monitor.description = vals[0];
-    if (key === 'frequency') monitor.frequency = parseInt(vals[0]);
+    if (key === 'frequency') {
+      const n = parseInt(vals[0], 10);
+      if (Number.isFinite(n)) monitor.frequency = n;
+    }
     if (key === 'u' || key === 'url') monitor.endpoint = vals[0];
   }
 

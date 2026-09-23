@@ -24,6 +24,14 @@ import {
   TRUSTED_MONITOR_PUBKEYS,
   NIP66_DATA_RELAYS,
 } from '@/lib/constants';
+import { normalizeRelayUrl } from '@/lib/relayUrl';
+
+/** Parse an integer tag value, guarding against NaN/garbage. */
+function parseIntTag(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const n = parseInt(value, 10);
+  return Number.isFinite(n) ? n : undefined;
+}
 
 // ─── NIP-66 parsed event data ─────────────────────────────────────────────
 export interface NIP66MonitorEvent {
@@ -45,8 +53,10 @@ export interface NIP66MonitorEvent {
   relayType?: string;
   /** Supported NIP numbers from N tags */
   supportedNips: number[];
-  /** Requirements from R tags: auth, payment, pow, writes */
-  requirements: { auth: boolean; payment: boolean; pow: boolean; writes: boolean };
+  /** Requirements from R tags: auth, payment, pow, writes.
+   * `writes` is null when the monitor published no `writes`/`!writes` R tag
+   * (absence means "unknown", not "writes allowed"). */
+  requirements: { auth: boolean; payment: boolean; pow: boolean; writes: boolean | null };
   /** Capability checks from R tags: open/read/write/ssl pass/fail */
   checks: { open?: boolean; read?: boolean; write?: boolean; ssl?: boolean };
   /** Geohash from g tag (highest precision) */
@@ -121,16 +131,19 @@ function parseMonitorAnnouncement(event: NostrEvent): MonitorAnnouncement | null
       const [, a, b] = tag;
       // ["timeout", "open", "5000"] or ["timeout", "5000", "open"]
       if (typeof a === 'string' && typeof b === 'string') {
-        if (isNaN(parseInt(a))) timeouts[a] = parseInt(b);
-        else timeouts[b] = parseInt(a);
-      } else if (typeof a === 'string' && !isNaN(parseInt(a))) {
-        timeouts.all = parseInt(a);
+        const aNum = parseIntTag(a);
+        const bNum = parseIntTag(b);
+        if (aNum === undefined && bNum !== undefined) timeouts[a] = bNum;
+        else if (aNum !== undefined) timeouts[b] = aNum;
+      } else if (typeof a === 'string') {
+        const aNum = parseIntTag(a);
+        if (aNum !== undefined) timeouts.all = aNum;
       }
     }
 
     return {
       pubkey: event.pubkey,
-      frequency: frequency ? parseInt(frequency) : undefined,
+      frequency: parseIntTag(frequency),
       checks,
       timeouts,
       geohash,
@@ -167,7 +180,8 @@ function tagValue(event: NostrEvent, name: string): string | undefined {
 function parseNIP66Event(event: NostrEvent): NIP66MonitorEvent | null {
   try {
     const dTag = tagValue(event, 'd');
-    if (!dTag || !dTag.startsWith('ws')) return null;
+    // Must be a real ws:// or wss:// URL (startsWith('ws') also matches 'wsx://…')
+    if (!dTag || normalizeRelayUrl(dTag) === null) return null;
 
     // Parse RTT values
     const rttOpen = tagValue(event, 'rtt-open');
@@ -190,7 +204,8 @@ function parseNIP66Event(event: NostrEvent): NIP66MonitorEvent | null {
       auth: rHas('auth'),
       payment: rHas('payment'),
       pow: rHas('pow'),
-      writes: !rTags.includes('!writes'),
+      // Absence of a writes/!writes R tag means "unknown" — not "writes allowed"
+      writes: rTags.includes('!writes') ? false : rTags.includes('writes') ? true : null,
     };
     const checks: NIP66MonitorEvent['checks'] = {};
     if (rTags.includes('open') || rTags.includes('!open')) checks.open = rHas('open');
@@ -249,9 +264,9 @@ function parseNIP66Event(event: NostrEvent): NIP66MonitorEvent | null {
       relayUrl: dTag,
       monitorPubkey: event.pubkey,
       checkedAt: event.created_at,
-      rttOpen: rttOpen ? parseInt(rttOpen) : undefined,
-      rttRead: rttRead ? parseInt(rttRead) : undefined,
-      rttWrite: rttWrite ? parseInt(rttWrite) : undefined,
+      rttOpen: parseIntTag(rttOpen),
+      rttRead: parseIntTag(rttRead),
+      rttWrite: parseIntTag(rttWrite),
       network,
       relayType,
       supportedNips,
@@ -265,7 +280,7 @@ function parseNIP66Event(event: NostrEvent): NIP66MonitorEvent | null {
       rejectedKinds,
       software,
       operatorPubkey,
-      sslValidTo: sslValidTo ? parseInt(sslValidTo) : undefined,
+      sslValidTo: parseIntTag(sslValidTo),
       sslIssuer,
       isp,
       asNumber,
@@ -301,14 +316,17 @@ export function useNIP66Monitor() {
 
       // Query the NIP-66 data relay group (meta-relays first — richest data)
       const relayGroup = nostr.group(NIP66_DATA_RELAYS);
-      const events = await relayGroup.query([
-        {
-          kinds: [KIND_RELAY_DISCOVERY],
-          authors: TRUSTED_MONITOR_PUBKEYS,
-          since: twoHoursAgo,
-          limit: 500,
-        },
-      ]);
+      const events = await relayGroup.query(
+        [
+          {
+            kinds: [KIND_RELAY_DISCOVERY],
+            authors: TRUSTED_MONITOR_PUBKEYS,
+            since: twoHoursAgo,
+            limit: 500,
+          },
+        ],
+        { signal: AbortSignal.timeout(15_000) },
+      );
 
       const monitorMap: NIP66MonitorMap = new Map();
 
@@ -346,14 +364,17 @@ export function useNIP66MultiMonitor() {
       const sixHoursAgo = Math.floor(Date.now() / 1000) - 21600;
 
       const relayGroup = nostr.group(NIP66_DATA_RELAYS);
-      const events = await relayGroup.query([
-        {
-          kinds: [KIND_RELAY_DISCOVERY],
-          authors: TRUSTED_MONITOR_PUBKEYS,
-          since: sixHoursAgo,
-          limit: 1000,
-        },
-      ]);
+      const events = await relayGroup.query(
+        [
+          {
+            kinds: [KIND_RELAY_DISCOVERY],
+            authors: TRUSTED_MONITOR_PUBKEYS,
+            since: sixHoursAgo,
+            limit: 1000,
+          },
+        ],
+        { signal: AbortSignal.timeout(15_000) },
+      );
 
       const multiMap: NIP66MultiMonitorMap = new Map();
 
@@ -395,12 +416,15 @@ export function useMonitorAnnouncements() {
     queryKey: ['nip66-monitor-announcements'],
     queryFn: async (): Promise<MonitorAnnouncement[]> => {
       const relayGroup = nostr.group(NIP66_DATA_RELAYS);
-      const events = await relayGroup.query([
-        {
-          kinds: [KIND_MONITOR_ANNOUNCEMENT],
-          limit: 100,
-        },
-      ]);
+      const events = await relayGroup.query(
+        [
+          {
+            kinds: [KIND_MONITOR_ANNOUNCEMENT],
+            limit: 100,
+          },
+        ],
+        { signal: AbortSignal.timeout(15_000) },
+      );
 
       // Keep latest per monitor pubkey
       const byPubkey = new Map<string, MonitorAnnouncement>();
@@ -440,13 +464,16 @@ export function useNIP66DiscoveryFeed(limit = 2000) {
       const threeDaysAgo = Math.floor(Date.now() / 1000) - 3 * 86400;
 
       const relayGroup = nostr.group(NIP66_DATA_RELAYS);
-      const events = await relayGroup.query([
-        {
-          kinds: [KIND_RELAY_DISCOVERY],
-          since: threeDaysAgo,
-          limit,
-        },
-      ]);
+      const events = await relayGroup.query(
+        [
+          {
+            kinds: [KIND_RELAY_DISCOVERY],
+            since: threeDaysAgo,
+            limit,
+          },
+        ],
+        { signal: AbortSignal.timeout(20_000) },
+      );
 
       const multiMap: NIP66MultiMonitorMap = new Map();
 

@@ -10,7 +10,7 @@ interface UptimeHistoryChartProps {
 
 // Generate synthetic 30-day data based on relay uptime
 function generate30DayData(relay: RelayRecord) {
-  const data = [];
+  const data: { date: string; uptime: number; latency: number }[] = [];
   const now = Date.now();
   const dayMs = 24 * 60 * 60 * 1000;
   const base = relay.uptimePercent30d;

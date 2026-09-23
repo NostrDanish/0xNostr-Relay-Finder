@@ -73,7 +73,7 @@ function AddLabelForm({ relayUrl }: { relayUrl: string }) {
   const { isMod } = useAdminAccess();
   const publishLabel = usePublishLabel();
   const publishTrustScore = usePublishTrustScore();
-  const [namespace, setNamespace] = useState(LABEL_NAMESPACES.CATEGORY);
+  const [namespace, setNamespace] = useState<string>(LABEL_NAMESPACES.CATEGORY);
   const [label, setLabel] = useState('');
   const [trustScore, setTrustScore] = useState('');
 

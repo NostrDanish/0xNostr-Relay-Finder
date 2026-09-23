@@ -6,9 +6,12 @@ import {
   APP_RELAY_URLS,
   KIND_RELAY_SUBMISSION,
   RELAY_SUBMISSION_D_PREFIX,
-  APPROVAL_D_PREFIX,
+  OWNER_PUBKEY_HEX,
   corsProxy,
 } from '@/lib/constants';
+import { normalizeRelayUrl, relayHttpUrl } from '@/lib/relayUrl';
+import { useAdminAccess } from '@/hooks/useAdminAccess';
+import { buildApprovalMap, approvalStatusFor } from '@/hooks/useSubmissions';
 import { RELAY_SEED_DATA } from '@/data/relays';
 
 interface SubmissionPayload {
@@ -34,17 +37,30 @@ interface SubmissionPayload {
  * Returns true if the relay responds, false otherwise.
  */
 async function probeRelay(url: string, timeoutMs = 12000): Promise<boolean> {
-  // Stage 1: NIP-11 HTTP fetch
-  try {
-    const httpUrl = url.replace(/^wss:\/\//, 'https://').replace(/^ws:\/\//, 'http://');
-    const resp = await fetch(corsProxy(httpUrl), {
-      method: 'GET',
-      headers: { Accept: 'application/nostr+json' },
-      signal: AbortSignal.timeout(8000),
-    });
-    if (resp.ok) return true;
-  } catch {
-    // NIP-11 fetch failed — try WebSocket
+  // Stage 1: NIP-11 HTTP fetch — direct first, CORS proxy as fallback
+  // (mirrors useNIP11Batch.fetchSingleNIP11's direct-then-proxy pattern)
+  const httpUrl = relayHttpUrl(url);
+  if (httpUrl) {
+    try {
+      const resp = await fetch(httpUrl, {
+        method: 'GET',
+        headers: { Accept: 'application/nostr+json' },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (resp.ok) return true;
+    } catch {
+      // Direct fetch failed (CORS/network) — try the proxy
+    }
+    try {
+      const resp = await fetch(corsProxy(httpUrl), {
+        method: 'GET',
+        headers: { Accept: 'application/nostr+json' },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (resp.ok) return true;
+    } catch {
+      // NIP-11 fetch failed — try WebSocket
+    }
   }
 
   // Stage 2: WebSocket open probe
@@ -109,7 +125,9 @@ function parseSubmissionEvent(event: NostrEvent): RelayRecord | null {
   try {
     const payload = JSON.parse(event.content) as SubmissionPayload;
 
-    if (!payload.url || !payload.url.startsWith('wss')) return null;
+    // Validate + normalize the URL (rejects garbage like `wssfoo`)
+    const url = payload.url ? normalizeRelayUrl(payload.url) : null;
+    if (!url) return null;
 
     const dTag = event.tags.find(([t]) => t === 'd')?.[1] ?? '';
     if (!dTag.startsWith(RELAY_SUBMISSION_D_PREFIX)) return null;
@@ -125,19 +143,22 @@ function parseSubmissionEvent(event: NostrEvent): RelayRecord | null {
         return v.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
       }) as UseCaseTag[];
 
+    // Compute isFree once and branch on it so isFree/priceTiers never disagree
+    const isFree = payload.isFree ?? true;
+
     const record: RelayRecord = {
       id: event.id,
-      url: payload.url,
-      name: payload.name ?? payload.url.replace(/^wss?:\/\//, ''),
+      url,
+      name: payload.name ?? url.replace(/^wss?:\/\//, ''),
       description: payload.description ?? '',
       nip11: payload.nip11 ?? {},
       useCases: payload.useCases ?? useCaseTags,
-      priceTiers: payload.isFree
+      priceTiers: isFree
         ? [{ name: 'Free', price: 0, currency: 'USD', features: ['Open access'] }]
         : [
             { name: 'Paid', price: payload.paidPriceUsd ?? 5, currency: 'USD', billing: 'monthly', features: ['Full access'] },
           ],
-      isFree: payload.isFree ?? true,
+      isFree,
       isOnline: false, // will be overridden by probing
       uptimePercent30d: 0,
       uptimeSpark: [],
@@ -171,13 +192,17 @@ function parseSubmissionEvent(event: NostrEvent): RelayRecord | null {
  */
 export function useRelayDirectory() {
   const { nostr } = useNostr();
+  // Authorized approvers: owner + admins + mods (role lists verified in useAdminAccess)
+  const { adminList, modList, isLoading: rolesLoading } = useAdminAccess();
+  const approverKey = [OWNER_PUBKEY_HEX, ...adminList, ...modList].sort().join(',');
 
   return useQuery({
-    queryKey: ['relay-directory', ...APP_RELAY_URLS],
+    queryKey: ['relay-directory', ...APP_RELAY_URLS, approverKey],
     queryFn: async () => {
       try {
         // Query both app relays for submission AND approval events
         const relayGroup = nostr.group(APP_RELAY_URLS);
+        const approvers = new Set([OWNER_PUBKEY_HEX, ...adminList, ...modList]);
 
         const [submissionEvents, approvalEvents] = await Promise.all([
           relayGroup.query([
@@ -190,27 +215,17 @@ export function useRelayDirectory() {
           relayGroup.query([
             {
               kinds: [KIND_RELAY_SUBMISSION],
+              authors: [...approvers],
               '#t': ['relay-approval'],
               limit: 200,
             },
           ]),
         ]);
 
-        // Build approval status map (submissionEventId → latest decision)
-        const approvalStatusMap = new Map<string, string>();
-        const approvalByRef = new Map<string, NostrEvent>();
-        for (const ev of approvalEvents) {
-          const refId = ev.tags.find(([t]) => t === 'e')?.[1];
-          if (!refId) continue;
-          const existing = approvalByRef.get(refId);
-          if (!existing || ev.created_at > existing.created_at) {
-            approvalByRef.set(refId, ev);
-          }
-        }
-        for (const [refId, ev] of approvalByRef) {
-          const status = ev.tags.find(([t]) => t === 'status')?.[1];
-          if (status) approvalStatusMap.set(refId, status);
-        }
+        // Build approval map keyed by normalized URL / address / event id.
+        // Only verified events from authorized approvers are considered
+        // (shared helper from useSubmissions).
+        const approvalStatusMap = buildApprovalMap(approvalEvents, approvers);
 
         // Deduplicate: keep only the latest event per d-tag
         const latestByDTag = new Map<string, NostrEvent>();
@@ -225,15 +240,27 @@ export function useRelayDirectory() {
 
         // Parse valid events into relay records, applying approval overrides
         const submittedRecords: RelayRecord[] = [];
-        const seenUrls = new Set(RELAY_SEED_DATA.map((r) => r.url));
+        // Normalize seed URLs too so dedup matches canonical submission URLs
+        const seenUrls = new Set(
+          RELAY_SEED_DATA.map((r) => normalizeRelayUrl(r.url) ?? r.url)
+        );
 
         for (const ev of latestByDTag.values()) {
-          // Check if there's an approval override that rejects this submission
-          const overrideStatus = approvalStatusMap.get(ev.id);
-          if (overrideStatus === 'rejected') continue;
-
           const record = parseSubmissionEvent(ev);
           if (!record) continue;
+
+          // Look up the latest approval decision by stable identifiers
+          // (URL survives resubmission across authors; address per author)
+          const dTag = ev.tags.find(([t]) => t === 'd')?.[1];
+          const overrideStatus = approvalStatusFor(approvalStatusMap, {
+            url: record.url,
+            address: dTag ? `${KIND_RELAY_SUBMISSION}:${ev.pubkey}:${dTag}` : undefined,
+            eventId: ev.id,
+          });
+
+          // Rejected relays stay hidden even after resubmission
+          if (overrideStatus === 'rejected') continue;
+
           // Skip if already in seed data
           if (seenUrls.has(record.url)) continue;
           seenUrls.add(record.url);
@@ -266,6 +293,8 @@ export function useRelayDirectory() {
         return [] as RelayRecord[];
       }
     },
+    // Wait for role lists so approval overrides can be authorized
+    enabled: !rolesLoading,
     staleTime: 1000 * 60 * 5,      // 5 minutes
     gcTime: 1000 * 60 * 30,        // 30 minutes
     retry: 2,

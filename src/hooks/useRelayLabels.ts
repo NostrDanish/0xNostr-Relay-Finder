@@ -73,26 +73,41 @@ export const TRUSTED_LABELERS = [OWNER_PUBKEY_HEX];
 
 // ─── Parsing ──────────────────────────────────────────────────────────────────
 
-function parseLabelEvent(event: NostrEvent): RelayLabel | null {
+/**
+ * Parse ALL `l` label tags from a label event (NIP-32 allows multiple).
+ * Each `l` tag may carry its own namespace as its third element; otherwise
+ * it falls back to the matching `L` namespace declaration, then to `ugc`.
+ */
+function parseLabelEvent(event: NostrEvent): RelayLabel[] {
   const lTags = event.tags.filter(([t]) => t === 'l');
   const LTags = event.tags.filter(([t]) => t === 'L');
   const rTags = event.tags.filter(([t]) => t === 'r');
 
-  if (lTags.length === 0 || rTags.length === 0) return null;
+  if (lTags.length === 0 || rTags.length === 0) return [];
 
   const relayUrl = rTags[0][1];
-  const namespace = LTags.length > 0 ? LTags[0][1] : LABEL_NAMESPACES.UGC;
-  const label = lTags[0][1];
+  const isTrusted = TRUSTED_LABELERS.includes(event.pubkey);
+  const createdAt = event.created_at * 1000;
 
-  return {
-    namespace,
-    label,
-    relayUrl,
-    authorPubkey: event.pubkey,
-    createdAt: event.created_at * 1000,
-    isTrusted: TRUSTED_LABELERS.includes(event.pubkey),
-    event,
-  };
+  const labels: RelayLabel[] = [];
+  for (const lTag of lTags) {
+    const label = lTag[1];
+    if (!label) continue;
+    // Namespace precedence: l tag's own 3rd element → first L tag → ugc
+    const namespace = lTag[2] ?? LTags[0]?.[1] ?? LABEL_NAMESPACES.UGC;
+
+    labels.push({
+      namespace,
+      label,
+      relayUrl,
+      authorPubkey: event.pubkey,
+      createdAt,
+      isTrusted,
+      event,
+    });
+  }
+
+  return labels;
 }
 
 // ─── Queries ──────────────────────────────────────────────────────────────────
@@ -115,9 +130,7 @@ export function useRelayLabels(relayUrl: string) {
         },
       ]);
 
-      const labels = events
-        .map(parseLabelEvent)
-        .filter((l): l is RelayLabel => l !== null);
+      const labels = events.flatMap(parseLabelEvent);
 
       // Sort by trusted first, then newest
       labels.sort((a, b) => {
@@ -191,9 +204,7 @@ export function useTrustedLabels() {
         },
       ]);
 
-      const labels = events
-        .map(parseLabelEvent)
-        .filter((l): l is RelayLabel => l !== null);
+      const labels = events.flatMap(parseLabelEvent);
 
       // Group by relay URL
       const byRelay = new Map<string, RelayLabel[]>();

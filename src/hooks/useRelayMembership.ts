@@ -21,6 +21,76 @@ import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useNostrPublish } from '@/hooks/useNostrPublish';
 import { APP_RELAY_URLS } from '@/lib/constants';
 
+// ─── Direct relay helpers ───────────────────────────────────────────────────
+
+/**
+ * Publish a signed event to ONE specific relay over a raw WebSocket and await
+ * the relay's OK response (NIP-20), returning the relay's actual message.
+ * NIP-43 join requests must go to the relay being joined — not the user's pool.
+ */
+function publishEventToRelay(
+  relayUrl: string,
+  event: NostrEvent,
+  timeoutMs = 15000,
+): Promise<{ ok: boolean; message: string }> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let ws: WebSocket;
+
+    const finish = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try { ws.close(); } catch { /* noop */ }
+      fn();
+    };
+
+    const timer = setTimeout(
+      () => finish(() => reject(new Error('Relay did not respond to the request (timeout)'))),
+      timeoutMs,
+    );
+
+    try {
+      ws = new WebSocket(relayUrl);
+    } catch (err) {
+      clearTimeout(timer);
+      reject(err);
+      return;
+    }
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify(['EVENT', event]));
+    };
+
+    ws.onmessage = (msg) => {
+      try {
+        const data = JSON.parse(msg.data as string);
+        if (!Array.isArray(data)) return;
+
+        // NIP-20 command result for our event
+        if (data[0] === 'OK' && data[1] === event.id) {
+          const ok = data[2] === true;
+          const message = typeof data[3] === 'string' ? data[3] : '';
+          finish(() => resolve({ ok, message }));
+        }
+      } catch {
+        // not JSON — ignore
+      }
+    };
+
+    ws.onerror = () => finish(() => reject(new Error(`Could not connect to ${relayUrl}`)));
+    ws.onclose = () => finish(() => reject(new Error(`Connection to ${relayUrl} closed before a response`)));
+  });
+}
+
+/** Reduce to the newest event by created_at (NIP-01 replaceable semantics). */
+function newestEvent(events: NostrEvent[]): NostrEvent | undefined {
+  return events.reduce<NostrEvent | undefined>(
+    (latest, ev) => (!latest || ev.created_at > latest.created_at ? ev : latest),
+    undefined,
+  );
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface RelayRole {
@@ -128,8 +198,9 @@ export function useRelayMembership(relayUrl: string, relaySelfPubkey?: string) {
         .filter((r): r is RelayRole => r !== null)
         .sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
 
-      const members = memberEvents.length > 0
-        ? parseMembershipEvent(memberEvents[0])
+      const latestMemberEvent = newestEvent(memberEvents);
+      const members = latestMemberEvent
+        ? parseMembershipEvent(latestMemberEvent)
         : [];
 
       return {
@@ -165,7 +236,7 @@ export function useIsRelayMember(relayUrl: string, relaySelfPubkey?: string) {
  * Requires an invite code (claim) if the relay is invite-only.
  */
 export function useJoinRelay() {
-  const { mutate: createEvent } = useNostrPublish();
+  const { user } = useCurrentUser();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -176,38 +247,34 @@ export function useJoinRelay() {
       relayUrl: string;
       inviteCode: string;
     }): Promise<JoinRequestResult> => {
-      return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          reject(new Error('Join request timed out'));
-        }, 10000);
+      if (!user) throw new Error('Not logged in');
 
-        createEvent(
-          {
-            kind: 28934,
-            content: '',
-            tags: [
-              ['claim', inviteCode],
-              ['-'],
-            ],
-          },
-          {
-            onSuccess: (event) => {
-              clearTimeout(timeout);
-              // Note: The relay will respond with an OK message via websocket
-              // We can't capture that here, so we optimistically return success
-              queryClient.invalidateQueries({ queryKey: ['relay-membership', relayUrl] });
-              resolve({
-                success: true,
-                message: 'Join request sent. Check relay for confirmation.',
-              });
-            },
-            onError: (err) => {
-              clearTimeout(timeout);
-              reject(err);
-            },
-          },
-        );
+      const event = await user.signer.signEvent({
+        kind: 28934,
+        content: '',
+        tags: [
+          ['claim', inviteCode],
+          ['-'],
+        ],
+        created_at: Math.floor(Date.now() / 1000),
       });
+
+      // Send directly to the relay being joined and await its OK response,
+      // reporting the relay's actual message instead of optimistic success.
+      const result = await publishEventToRelay(relayUrl, event);
+
+      if (result.ok) {
+        queryClient.invalidateQueries({ queryKey: ['relay-membership', relayUrl] });
+        return {
+          success: true,
+          message: result.message || 'Join request accepted by the relay.',
+        };
+      }
+
+      return {
+        success: false,
+        message: result.message || 'Relay rejected the join request.',
+      };
     },
   });
 }
@@ -226,22 +293,27 @@ export function useRequestInvite() {
       relayUrl: string;
       relaySelfPubkey: string;
     }): Promise<string> => {
-      const relayGroup = nostr.group(APP_RELAY_URLS);
+      // Query the relay being joined directly — invites are issued by the
+      // target relay, not by the app relay group.
+      const targetRelay = nostr.relay(relayUrl);
+      const events = await targetRelay.query(
+        [
+          {
+            kinds: [28935],
+            authors: [relaySelfPubkey],
+            limit: 5,
+          },
+        ],
+        { signal: AbortSignal.timeout(10000) },
+      );
 
-      // Request kind:28935 from the relay's self pubkey
-      const events = await relayGroup.query([
-        {
-          kinds: [28935],
-          authors: [relaySelfPubkey],
-          limit: 1,
-        },
-      ]);
-
-      if (events.length === 0) {
+      // Use the newest invite (created_at), not an arbitrary first result
+      const invite = newestEvent(events);
+      if (!invite) {
         throw new Error('No invite available from this relay');
       }
 
-      const claimTag = events[0].tags.find(([t]) => t === 'claim');
+      const claimTag = invite.tags.find(([t]) => t === 'claim');
       if (!claimTag) {
         throw new Error('Invalid invite response from relay');
       }

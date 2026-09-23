@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNostr } from '@nostrify/react';
+import type { NostrEvent } from '@nostrify/nostrify';
+import { verifyEvent } from 'nostr-tools';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import {
   OWNER_PUBKEY_HEX,
@@ -39,12 +41,23 @@ export function useAdminAccess() {
         },
       ]);
 
-      const adminEvent = events.find(
-        (e) => e.tags.find(([t, v]) => t === 'd' && v === ADMIN_ROLES_D_TAG)
-      );
-      const modEvent = events.find(
-        (e) => e.tags.find(([t, v]) => t === 'd' && v === MOD_ROLES_D_TAG)
-      );
+      // Drop events with invalid id/signature before trusting their content
+      const validEvents = events.filter((ev) => verifyEvent(ev));
+
+      // Keep only the NEWEST event per d-tag (replaceable addressable events
+      // may have stale copies on different relays)
+      const newestByD = new Map<string, NostrEvent>();
+      for (const ev of validEvents) {
+        const d = ev.tags.find(([t]) => t === 'd')?.[1];
+        if (!d) continue;
+        const existing = newestByD.get(d);
+        if (!existing || ev.created_at > existing.created_at) {
+          newestByD.set(d, ev);
+        }
+      }
+
+      const adminEvent = newestByD.get(ADMIN_ROLES_D_TAG);
+      const modEvent = newestByD.get(MOD_ROLES_D_TAG);
 
       let admins: string[] = [];
       let mods: string[] = [];

@@ -14,6 +14,8 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useNostr } from '@nostrify/react';
+import type { NostrEvent } from '@nostrify/nostrify';
+import { verifyEvent } from 'nostr-tools';
 import {
   OWNER_PUBKEY_HEX,
   KIND_FOLLOW_LIST,
@@ -64,18 +66,20 @@ export function useWoT() {
           },
         ]);
 
-        // Deduplicate: keep latest per author
-        const latestByAuthor = new Map<string, string[][]>();
+        // Deduplicate: keep latest per author (compare created_at), and only
+        // trust events whose id + signature verify
+        const latestByAuthor = new Map<string, { created_at: number; tags: string[][] }>();
         for (const ev of anchorFollowEvents) {
+          if (!verifyEvent(ev)) continue;
           const existing = latestByAuthor.get(ev.pubkey);
-          if (!existing) {
-            latestByAuthor.set(ev.pubkey, ev.tags);
+          if (!existing || ev.created_at > existing.created_at) {
+            latestByAuthor.set(ev.pubkey, ev);
           }
         }
 
         // Extract level 1 pubkeys (directly followed by anchors)
         const level1 = new Set<string>();
-        for (const tags of latestByAuthor.values()) {
+        for (const { tags } of latestByAuthor.values()) {
           for (const tag of tags) {
             if (tag[0] === 'p' && tag[1] && tag[1].length === 64) {
               level1.add(tag[1]);
@@ -84,8 +88,8 @@ export function useWoT() {
         }
 
         // Step 2: Fetch follow lists for level 1 users (sample for performance)
-        // Only fetch a subset to avoid overloading — pick up to 50 most relevant
-        const level1Sample = [...level1].slice(0, 50);
+        // Sort first so the 50-pubkey sample is deterministic across fetches
+        const level1Sample = [...level1].sort().slice(0, 50);
         const level2 = new Set<string>();
 
         if (level1Sample.length > 0) {
@@ -97,7 +101,17 @@ export function useWoT() {
             },
           ]);
 
+          // Keep only the newest verified follow list per level-1 author
+          const latestLevel1 = new Map<string, NostrEvent>();
           for (const ev of level1Events) {
+            if (!verifyEvent(ev)) continue;
+            const existing = latestLevel1.get(ev.pubkey);
+            if (!existing || ev.created_at > existing.created_at) {
+              latestLevel1.set(ev.pubkey, ev);
+            }
+          }
+
+          for (const ev of latestLevel1.values()) {
             for (const tag of ev.tags) {
               if (tag[0] === 'p' && tag[1] && tag[1].length === 64) {
                 // Only add if not already in level 1

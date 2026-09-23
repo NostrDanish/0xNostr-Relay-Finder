@@ -68,26 +68,33 @@ export interface ExtendedRelayRecord extends LiveRelayRecord {
 export function computeHealthScore(relay: ExtendedRelayRecord): HealthScoreBreakdown {
   const components: HealthComponent[] = [];
 
-  // 1. Uptime (25 points)
-  const uptimePoints = Math.min(relay.uptimePercent30d, 100) * 0.25;
+  // 1. Uptime (25 points) — NaN/missing → 0 points with an honest description
+  const rawUptime = relay.uptimePercent30d;
+  const hasUptime = Number.isFinite(rawUptime);
+  const uptimePct = hasUptime ? Math.min(Math.max(rawUptime, 0), 100) : 0;
+  const uptimePoints = uptimePct * 0.25;
   components.push({
     name: '30-Day Uptime',
-    description: `${relay.uptimePercent30d.toFixed(1)}% uptime over the last 30 days`,
+    description: hasUptime
+      ? `${uptimePct.toFixed(1)}% uptime over the last 30 days`
+      : 'No uptime data',
     maxPoints: 25,
     points: Math.round(uptimePoints * 10) / 10,
-    percent: relay.uptimePercent30d / 100,
+    percent: uptimePct / 100,
   });
 
-  // 2. Latency (15 points) — <50ms = 15pts, >2000ms = 0pts
+  // 2. Latency (15 points) — linear curve: 15 pts at 0ms down to 0 pts at
+  //    ~2000ms (15 − ms/133, clamped to [0, 15])
   let latencyPoints = 0;
-  const latency = relay.liveLatencyMs ?? relay.avgLatencyMs;
-  if (latency != null) {
-    latencyPoints = Math.max(0, 15 - (latency / 133));
+  const latencyRaw = relay.liveLatencyMs ?? relay.avgLatencyMs;
+  const hasLatency = latencyRaw != null && Number.isFinite(latencyRaw) && latencyRaw >= 0;
+  if (hasLatency) {
+    latencyPoints = Math.max(0, 15 - (latencyRaw / 133));
     latencyPoints = Math.min(latencyPoints, 15);
   }
   components.push({
     name: 'Latency',
-    description: latency != null ? `${latency}ms average round-trip time` : 'No latency data available',
+    description: hasLatency ? `${latencyRaw}ms average round-trip time` : 'No latency data available',
     maxPoints: 15,
     points: Math.round(latencyPoints * 10) / 10,
     percent: latencyPoints / 15,
@@ -230,10 +237,10 @@ export function computeHealthScore(relay: ExtendedRelayRecord): HealthScoreBreak
     percent: advancedPoints / 5,
   });
 
-  // 9. Directory age (5 points)
-  const ageMs = Date.now() - relay.addedAt;
+  // 9. Directory age (5 points) — a future addedAt yields 0, never negative
+  const ageMs = Math.max(0, Date.now() - relay.addedAt);
   const ageMonths = ageMs / (30 * 24 * 60 * 60 * 1000);
-  const agePoints = Math.min(ageMonths, 5);
+  const agePoints = Math.min(Math.max(ageMonths, 0), 5);
   components.push({
     name: 'Directory Age',
     description: ageMonths >= 1
@@ -244,8 +251,18 @@ export function computeHealthScore(relay: ExtendedRelayRecord): HealthScoreBreak
     percent: agePoints / 5,
   });
 
-  // Total
-  const total = Math.round(Math.min(components.reduce((s, c) => s + c.points, 0), 100));
+  // Final normalization: clamp every component to [0, maxPoints] (guards
+  // against NaN/negative input leaking into the total) and the total to [0, 100].
+  for (const c of components) {
+    const clamped = Number.isFinite(c.points)
+      ? Math.min(Math.max(c.points, 0), c.maxPoints)
+      : 0;
+    c.points = Math.round(clamped * 10) / 10;
+    c.percent = c.maxPoints > 0 ? clamped / c.maxPoints : 0;
+  }
+  const total = Math.round(
+    Math.min(Math.max(components.reduce((s, c) => s + c.points, 0), 0), 100),
+  );
 
   // Grade
   let grade: string;
@@ -282,3 +299,4 @@ export function gradeBgColor(grade: string): string {
     default: return 'bg-muted border-border';
   }
 }
+

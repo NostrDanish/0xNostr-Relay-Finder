@@ -18,6 +18,7 @@ import {
   TRUSTED_MONITOR_PUBKEYS,
   NIP66_DATA_RELAYS,
 } from '@/lib/constants';
+import { normalizeRelayUrl, relayListFingerprint } from '@/lib/relayUrl';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -32,29 +33,8 @@ export interface DiscoveredRelay {
 }
 
 // ─── URL normalization ────────────────────────────────────────────────────────
-
-function normalizeRelayUrl(url: string): string | null {
-  try {
-    // Must start with ws:// or wss://
-    if (!url.startsWith('wss://') && !url.startsWith('ws://')) return null;
-
-    const parsed = new URL(url);
-    // Normalize: lowercase host, remove trailing slash, remove default ports
-    let normalized = `${parsed.protocol}//${parsed.hostname.toLowerCase()}`;
-    if (parsed.port && parsed.port !== '443' && parsed.port !== '80') {
-      normalized += `:${parsed.port}`;
-    }
-    if (parsed.pathname && parsed.pathname !== '/') {
-      normalized += parsed.pathname.replace(/\/+$/, '');
-    }
-    // Ensure wss://
-    normalized = normalized.replace(/^ws:\/\//, 'wss://');
-
-    return normalized;
-  } catch {
-    return null;
-  }
-}
+// Uses the shared normalizeRelayUrl util (@/lib/relayUrl): canonical wss form,
+// lowercase host, no trailing slash, no default port, ws:// upgraded to wss://.
 
 /**
  * Extract relay URLs from kind:10002 events.
@@ -108,7 +88,7 @@ function extractFromMonitorEvent(tags: string[][]): string[] {
 /**
  * Hook that crawls Nostr for new relay URLs.
  *
- * Queries recent kind:10002 and kind:30166 events and extracts
+ * Queries recent kind:10002, kind:3, and kind:30166 events and extracts
  * relay URLs that aren't in the provided known set.
  */
 export function useRelayCrawler(knownRelayUrls: string[]) {
@@ -116,7 +96,9 @@ export function useRelayCrawler(knownRelayUrls: string[]) {
   const knownSet = new Set(knownRelayUrls.map((u) => normalizeRelayUrl(u) ?? u));
 
   return useQuery({
-    queryKey: ['relay-crawler', knownRelayUrls.length],
+    // Key by a fingerprint of the actual URL set, not just its length, so
+    // changed-but-same-length known lists still trigger a fresh crawl.
+    queryKey: ['relay-crawler', relayListFingerprint(knownRelayUrls)],
     queryFn: async (): Promise<DiscoveredRelay[]> => {
       const sixHoursAgo = Math.floor(Date.now() / 1000) - 21600;
       const discoveryMap = new Map<string, DiscoveredRelay>();
@@ -156,7 +138,43 @@ export function useRelayCrawler(knownRelayUrls: string[]) {
         console.warn('[RelayCrawler] kind:10002 query failed:', err);
       }
 
-      // 2. Query kind:30166 from ALL monitors for relay URLs we don't know.
+      // 2. Query recent kind:3 follow lists — relay URLs hide in p-tag
+      //    hints and in the legacy JSON content map.
+      try {
+        const followListEvents = await nostr.query([
+          {
+            kinds: [KIND_FOLLOW_LIST],
+            since: sixHoursAgo,
+            limit: 100,
+          },
+        ]);
+
+        for (const event of followListEvents) {
+          const urls = extractFromFollowList(event.content, event.tags);
+          for (const url of urls) {
+            if (knownSet.has(url)) continue;
+            const existing = discoveryMap.get(url);
+            if (existing) {
+              existing.seenCount++;
+              if (!existing.referencedBy.includes(event.pubkey)) {
+                existing.referencedBy.push(event.pubkey);
+              }
+            } else {
+              discoveryMap.set(url, {
+                url,
+                discoveredAt: Date.now(),
+                source: 'kind:3',
+                seenCount: 1,
+                referencedBy: [event.pubkey],
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[RelayCrawler] kind:3 query failed:', err);
+      }
+
+      // 3. Query kind:30166 from ALL monitors for relay URLs we don't know.
       //    Every `d` tag is a relay some monitor has health-checked — this is
       //    the same discovery source nostr.watch itself uses. We query the
       //    dedicated NIP-66 meta-relays where monitors publish.

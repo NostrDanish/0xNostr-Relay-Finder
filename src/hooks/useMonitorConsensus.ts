@@ -6,7 +6,8 @@
  * - Consensus status: "online per 3/4 monitors" (quorum-based)
  * - Median RTT across monitors (robust against outliers)
  * - Per-monitor breakdown table
- * - Real uptime % computed from historical kind:30166 events
+ * - Observation-coverage summary from retained kind:30166 events
+ *   (lower bound only — kind:30166 is replaceable per (pubkey, d))
  * - Tri-state liveness: online / offline / dead (from monitor recency)
  * - Speed groups: percentile buckets across the whole network
  *   (Lightning Fast ≤20th pct, Swift ≤40th, Mid ≤60th, Leisurely ≤80th, Glacial >80th)
@@ -109,9 +110,10 @@ export function computeConsensus(
     .map((event) => ({
       monitorPubkey: event.monitorPubkey,
       checkedAt: event.checkedAt,
-      // A relay is "online" per this monitor if the event exists and is recent
-      // (monitors only publish 30166 for relays they could reach, per NIP-66)
-      online: true,
+      // A monitor counts the relay as online only if its open check did not
+      // fail (R tag "!open") AND it reported a valid rtt-open. A missing
+      // rtt-open is treated as suspect/offline.
+      online: event.checks.open !== false && Number.isFinite(event.rttOpen),
       rttOpen: event.rttOpen,
       rttRead: event.rttRead,
       rttWrite: event.rttWrite,
@@ -122,16 +124,16 @@ export function computeConsensus(
   const monitorCount = observations.length;
   const lastSeenAt = observations[0]?.checkedAt ?? 0;
 
-  // A monitor's observation only counts as "online" if it's fresh (< 3h old)
+  // A monitor's observation only counts if it's fresh (< 3h old)
   const now = Math.floor(Date.now() / 1000);
   const freshObservations = observations.filter(
     (o) => now - o.checkedAt <= OFFLINE_AFTER_S,
   );
-  const onlineCount = freshObservations.length;
+  const onlineCount = freshObservations.filter((o) => o.online).length;
 
-  // Quorum: online if >= 50% of monitors that saw it recently agree
-  const agreement = monitorCount > 0 ? onlineCount / monitorCount : 0;
-  const online = onlineCount > 0 && agreement >= 0.5;
+  // Quorum: online if >= 50% of monitors WITH FRESH observations agree it's up
+  const agreement = freshObservations.length > 0 ? onlineCount / freshObservations.length : 0;
+  const online = freshObservations.length > 0 && agreement >= 0.5;
 
   const allNips = new Set<number>();
   const allKinds = new Set<number>();
@@ -200,21 +202,28 @@ export function useRelayConsensus(relayUrl: string) {
   return { consensus, isLoading };
 }
 
-// ─── Real uptime from historical kind:30166 ─────────────────────────────────
+// ─── Observation coverage from retained kind:30166 events ──────────────────
 
 export interface UptimeDataPoint {
   /** Bucket start timestamp (ms) */
   timestamp: number;
-  /** 1 = seen online by any monitor in this bucket, 0 = not seen */
+  /** 1 = a retained monitor observation exists in this bucket, 0 = no retained
+   * observation (NOT proof the relay was down — kind:30166 is replaceable) */
   online: 0 | 1;
 }
 
 export interface RelayHistoryStats {
-  /** Uptime % over the queried window */
+  /**
+   * Percentage of days in the window with at least one retained monitor
+   * observation. NOTE: kind:30166 is parameterized-replaceable per
+   * (pubkey, d), so relays keep at most ONE event per monitor — this is a
+   * lower bound based on the observations actually returned, NOT a true
+   * 14/30-day uptime measurement.
+   */
   uptimePercent: number;
-  /** Bucketed data points for sparklines/charts */
+  /** Bucketed data points for sparklines/charts (0 = no retained observation, NOT proof of downtime) */
   points: UptimeDataPoint[];
-  /** Number of checks found */
+  /** Number of distinct observation events actually returned (≤ monitorCount, because kind:30166 is replaceable) */
   checkCount: number;
   /** Distinct monitors that checked this relay */
   monitorCount: number;
@@ -222,12 +231,16 @@ export interface RelayHistoryStats {
   rttTrend: { timestamp: number; rtt: number }[];
   /** Whether we found any history at all */
   hasHistory: boolean;
+  /** Human-readable caveat describing what uptimePercent is based on */
+  note: string;
 }
 
 /**
- * Fetch historical kind:30166 events for a relay and compute REAL uptime.
- * Buckets the last 14 days into daily buckets: a day counts as "up" if any
- * trusted monitor published an observation for the relay that day.
+ * Fetch retained kind:30166 events for a relay and summarize observation
+ * coverage. Because kind:30166 is parameterized-replaceable per (pubkey, d),
+ * relays return at most one event per monitor — the uptime figure below is
+ * therefore computed only from the distinct observation timestamps actually
+ * returned and must not be presented as a full multi-day uptime history.
  */
 export function useRelayMonitorHistory(relayUrl: string, days = 14) {
   const { nostr } = useNostr();
@@ -239,15 +252,18 @@ export function useRelayMonitorHistory(relayUrl: string, days = 14) {
       const sinceS = nowS - days * 24 * 3600;
 
       const relayGroup = nostr.group(NIP66_DATA_RELAYS);
-      const events = await relayGroup.query([
-        {
-          kinds: [KIND_RELAY_DISCOVERY],
-          authors: TRUSTED_MONITOR_PUBKEYS,
-          '#d': [relayUrl],
-          since: sinceS,
-          limit: 500,
-        },
-      ]);
+      const events = await relayGroup.query(
+        [
+          {
+            kinds: [KIND_RELAY_DISCOVERY],
+            authors: TRUSTED_MONITOR_PUBKEYS,
+            '#d': [relayUrl],
+            since: sinceS,
+            limit: 500,
+          },
+        ],
+        { signal: AbortSignal.timeout(15_000) },
+      );
 
       if (events.length === 0) {
         return {
@@ -257,27 +273,32 @@ export function useRelayMonitorHistory(relayUrl: string, days = 14) {
           monitorCount: 0,
           rttTrend: [],
           hasHistory: false,
+          note: 'No monitor observations found for this relay in the window.',
         };
       }
 
-      // Bucket by day
+      // Bucket by day — only from the observations actually returned
       const bucketMs = 24 * 3600 * 1000;
       const buckets = new Map<number, { online: boolean; rtts: number[] }>();
       const monitors = new Set<string>();
+      const observationTimestamps = new Set<number>();
 
       for (const event of events) {
         monitors.add(event.pubkey);
+        observationTimestamps.add(event.created_at);
         const tsMs = event.created_at * 1000;
         const bucketStart = Math.floor(tsMs / bucketMs) * bucketMs;
         const bucket = buckets.get(bucketStart) ?? { online: false, rtts: [] };
-        bucket.online = true; // Monitors only publish 30166 for reachable relays
+        bucket.online = true; // a retained observation exists for this day
         const rttTag = event.tags.find(([t]) => t === 'rtt-open')?.[1];
-        const rtt = rttTag ? parseInt(rttTag) : NaN;
-        if (!isNaN(rtt)) bucket.rtts.push(rtt);
+        const rtt = rttTag ? parseInt(rttTag, 10) : NaN;
+        if (Number.isFinite(rtt)) bucket.rtts.push(rtt);
         buckets.set(bucketStart, bucket);
       }
 
-      // Build full day range (fill gaps as offline)
+      // Build the day range. Days with no retained observation are marked 0,
+      // which means "no observation retained" (replaceable events!), not
+      // "the relay was down".
       const points: UptimeDataPoint[] = [];
       const rttTrend: { timestamp: number; rtt: number }[] = [];
       let upDays = 0;
@@ -297,10 +318,11 @@ export function useRelayMonitorHistory(relayUrl: string, days = 14) {
       return {
         uptimePercent: Math.round((upDays / days) * 1000) / 10,
         points,
-        checkCount: events.length,
+        checkCount: observationTimestamps.size,
         monitorCount: monitors.size,
         rttTrend,
         hasHistory: true,
+        note: `Based on ${observationTimestamps.size} recent monitor observation${observationTimestamps.size !== 1 ? 's' : ''} from ${monitors.size} monitor${monitors.size !== 1 ? 's' : ''} — kind:30166 events are replaceable, so this is a lower bound, not a full ${days}-day uptime history.`,
       };
     },
     staleTime: 1000 * 60 * 15,

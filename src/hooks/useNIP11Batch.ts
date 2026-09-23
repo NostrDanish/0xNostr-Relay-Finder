@@ -13,6 +13,7 @@
 import { useQuery } from '@tanstack/react-query';
 import type { NIP11Info } from '@/types/relay';
 import { corsProxy } from '@/lib/constants';
+import { relayHttpUrl, relayListFingerprint } from '@/lib/relayUrl';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -42,7 +43,9 @@ let globalNIP11Cache: NIP11CacheMap = new Map();
  * Fetch a single relay's NIP-11 document, trying direct first, then CORS proxy.
  */
 async function fetchSingleNIP11(wsUrl: string): Promise<NIP11Info | null> {
-  const httpUrl = wsUrl.replace(/^wss?:\/\//, 'https://');
+  // wss:// → https://, ws:// → http:// (ws:// is NOT served over https)
+  const httpUrl = relayHttpUrl(wsUrl);
+  if (!httpUrl) return null;
 
   // Try direct fetch
   try {
@@ -90,6 +93,20 @@ function diffNips(
 }
 
 /**
+ * Deterministic JSON stringify with recursively sorted object keys, so change
+ * detection isn't fooled by key-order differences between fetches.
+ */
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([, v]) => v !== undefined)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`);
+  return `{${entries.join(',')}}`;
+}
+
+/**
  * Batch-fetch NIP-11 for a list of relay URLs with rate limiting.
  * Processes 8 relays concurrently with 300ms between batches.
  */
@@ -129,18 +146,21 @@ async function batchFetchNIP11(
       const currentNips = info.supported_nips ?? [];
       const { added, removed } = diffNips(previousNips, currentNips);
 
-      // Check if document actually changed
+      // Check if document actually changed (order-insensitive comparison)
       const changed = !existing ||
-        JSON.stringify(existing.info) !== JSON.stringify(info);
+        stableStringify(existing.info) !== stableStringify(info);
+
+      // Per-relay fetch timestamp (not the pre-loop timestamp)
+      const fetchedAt = Date.now();
 
       newCache.set(url, {
         info,
-        fetchedAt: now,
+        fetchedAt,
         previousNips,
         nipsAdded: added,
         nipsRemoved: removed,
         changed,
-        lastChangedAt: changed ? now : existing?.lastChangedAt,
+        lastChangedAt: changed ? fetchedAt : existing?.lastChangedAt,
       });
     }
 
@@ -161,7 +181,7 @@ async function batchFetchNIP11(
  */
 export function useNIP11Batch(relayUrls: string[]) {
   return useQuery({
-    queryKey: ['nip11-batch', relayUrls.length],
+    queryKey: ['nip11-batch', relayListFingerprint(relayUrls)],
     queryFn: async () => {
       const cache = await batchFetchNIP11(relayUrls, globalNIP11Cache);
       globalNIP11Cache = cache;

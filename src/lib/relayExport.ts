@@ -51,7 +51,7 @@ export function toExportRecords(relays: LiveRelayRecord[]): RelayExportRecord[] 
     isFree: r.isFree,
     authRequired: r.monitorRequirements?.auth ?? r.nip11.limitation?.auth_required ?? false,
     paymentRequired: r.monitorRequirements?.payment ?? r.nip11.limitation?.payment_required ?? false,
-    blossomSupported: r.blossomSupported,
+    blossomSupported: r.blossomSupported ?? false,
     nip66Enriched: r.nip66?.enriched ?? false,
     geohash: r.geohash,
     operatorPubkey: r.liveNip11?.pubkey ?? r.nip11.pubkey,
@@ -86,22 +86,22 @@ export function exportRelaysAsCsv(relays: LiveRelayRecord[]): void {
   ];
 
   const rows = records.map((r) => [
-    r.url,
+    csvEscape(r.url),
     csvEscape(r.name),
     r.online ? '1' : '0',
     r.uptimePercent30d.toFixed(1),
     r.avgLatencyMs?.toString() ?? '',
     r.trustScore.toString(),
-    r.country ?? '',
-    r.software ?? '',
-    r.version ?? '',
+    csvEscape(r.country ?? ''),
+    csvEscape(r.software ?? ''),
+    csvEscape(r.version ?? ''),
     r.supportedNips.length.toString(),
     r.isFree ? '1' : '0',
     r.authRequired ? '1' : '0',
     r.paymentRequired ? '1' : '0',
     r.blossomSupported ? '1' : '0',
     r.nip66Enriched ? '1' : '0',
-    r.geohash ?? '',
+    csvEscape(r.geohash ?? ''),
   ]);
 
   const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');

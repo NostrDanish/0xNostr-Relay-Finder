@@ -1,10 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNostr } from '@nostrify/react';
 import type { NostrEvent } from '@nostrify/nostrify';
+import { verifyEvent } from 'nostr-tools';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { useAdminAccess } from '@/hooks/useAdminAccess';
+import { normalizeRelayUrl } from '@/lib/relayUrl';
 import {
   APP_RELAY_URLS,
-  APP_RELAY_URL,
   OWNER_PUBKEY_HEX,
   KIND_RELAY_SUBMISSION,
   KIND_RELAY_REPORT,
@@ -43,6 +45,12 @@ export interface Report {
 }
 
 // ─── Parse helpers ─────────────────────────────────────────────────────────
+/**
+ * Parses a kind:30078 relay submission event.
+ * The canonical relay URL is taken from the `r` tag (validated + normalized)
+ * so dedup keys and displayed URLs always agree. Submissions without a valid
+ * `r` tag are rejected.
+ */
 function parseSubmission(ev: NostrEvent): Submission | null {
   try {
     const dTag = ev.tags.find(([t]) => t === 'd')?.[1] ?? '';
@@ -52,7 +60,11 @@ function parseSubmission(ev: NostrEvent): Submission | null {
       url?: string; name?: string; description?: string;
       useCases?: string[]; isFree?: boolean; nip11?: Record<string, unknown>;
     };
-    if (!payload.url) return null;
+
+    // Canonical URL: r tag (validated + normalized), NOT the free-form content URL
+    const rTagUrl = ev.tags.find(([t]) => t === 'r')?.[1];
+    const url = rTagUrl ? normalizeRelayUrl(rTagUrl) : null;
+    if (!url) return null;
 
     const status = (ev.tags.find(([t]) => t === 'status')?.[1] ?? 'pending') as SubmissionStatus;
     const pricing = (ev.tags.find(([t]) => t === 'pricing')?.[1] ?? (payload.isFree ? 'free' : 'paid')) as 'free' | 'paid';
@@ -60,8 +72,8 @@ function parseSubmission(ev: NostrEvent): Submission | null {
 
     return {
       eventId: ev.id,
-      url: payload.url,
-      name: payload.name ?? payload.url,
+      url,
+      name: payload.name ?? url,
       description: payload.description ?? '',
       status,
       submitterPubkey: ev.pubkey,
@@ -79,7 +91,9 @@ function parseSubmission(ev: NostrEvent): Submission | null {
 
 function parseReport(ev: NostrEvent): Report | null {
   try {
-    const relayUrl = ev.tags.find(([t]) => t === 'r')?.[1] ?? '';
+    const rTagUrl = ev.tags.find(([t]) => t === 'r')?.[1];
+    const relayUrl = rTagUrl ? normalizeRelayUrl(rTagUrl) : null;
+    if (!relayUrl) return null; // reject reports with missing/invalid r tag
     const reason = ev.tags.find(([t]) => t === 'reason')?.[1] ?? 'unspecified';
     const referencedSubmissionId = ev.tags.find(([t]) => t === 'e')?.[1];
 
@@ -99,33 +113,100 @@ function parseReport(ev: NostrEvent): Report | null {
 }
 
 // ─── Approval status merge ─────────────────────────────────────────────────
+
+export type ApprovalDecision = 'approved' | 'rejected';
+
+export interface ApprovalEntry {
+  status: ApprovalDecision;
+  createdAt: number;
+}
+
 /**
- * Builds a map of submissionEventId → latest approval decision.
- * Approval events have d-tag "0xapproval:<submissionEventId>" and an "e" tag
- * referencing the original submission. We take the latest one per submission.
+ * The lookup keys an approval event applies to. Because submissions are
+ * addressable (kind:30078, d="0xrelay:<url>"), re-submission replaces the
+ * event id — so approvals are keyed by:
+ *   1. the normalized relay URL (`url:<wss://…>`) — stable across resubmissions,
+ *   2. the submission address (`addr:<kind>:<pubkey>:<d>`) — stable per author,
+ *   3. the legacy event-id reference (`id:<eventId>`) — for old approvals.
  */
-function buildApprovalMap(approvalEvents: NostrEvent[]): Map<string, SubmissionStatus> {
-  // Group by referenced submission event id, keep latest
-  const latestByRef = new Map<string, NostrEvent>();
+function approvalKeys(ev: NostrEvent): string[] {
+  const keys: string[] = [];
+  const rTagUrl = ev.tags.find(([t]) => t === 'r')?.[1];
+  const normUrl = rTagUrl ? normalizeRelayUrl(rTagUrl) : null;
+  if (normUrl) keys.push(`url:${normUrl}`);
+  const aTag = ev.tags.find(([t]) => t === 'a')?.[1];
+  if (aTag) keys.push(`addr:${aTag}`);
+  const eRef = ev.tags.find(([t]) => t === 'e')?.[1];
+  if (eRef) keys.push(`id:${eRef}`);
+  return keys;
+}
+
+/**
+ * Builds a map of approval key → latest approval decision.
+ *
+ * SECURITY: only approval events authored by an authorized pubkey
+ * (owner/admin/mod — supplied via `approvers`) AND with a valid id+signature
+ * (nostr-tools verifyEvent) are considered. Newest decision per key wins.
+ */
+export function buildApprovalMap(
+  approvalEvents: NostrEvent[],
+  approvers: ReadonlySet<string>,
+): Map<string, ApprovalEntry> {
+  const map = new Map<string, ApprovalEntry>();
 
   for (const ev of approvalEvents) {
-    const refId = ev.tags.find(([t]) => t === 'e')?.[1];
-    if (!refId) continue;
-    const existing = latestByRef.get(refId);
-    if (!existing || ev.created_at > existing.created_at) {
-      latestByRef.set(refId, ev);
+    // Must be authored by owner/admin/mod
+    if (!approvers.has(ev.pubkey)) continue;
+    // Must have a valid id + signature
+    if (!verifyEvent(ev)) continue;
+
+    const dTag = ev.tags.find(([t]) => t === 'd')?.[1];
+    if (!dTag?.startsWith(APPROVAL_D_PREFIX)) continue;
+
+    const statusTag = ev.tags.find(([t]) => t === 'status')?.[1];
+    if (statusTag !== 'approved' && statusTag !== 'rejected') continue;
+
+    for (const key of approvalKeys(ev)) {
+      const existing = map.get(key);
+      if (!existing || ev.created_at > existing.createdAt) {
+        map.set(key, { status: statusTag, createdAt: ev.created_at });
+      }
     }
   }
 
-  const statusMap = new Map<string, SubmissionStatus>();
-  for (const [refId, ev] of latestByRef) {
-    const status = ev.tags.find(([t]) => t === 'status')?.[1];
-    if (status === 'approved' || status === 'rejected') {
-      statusMap.set(refId, status);
+  return map;
+}
+
+/**
+ * Looks up the latest approval decision for a submission, trying all of its
+ * stable identifiers. Newest decision across all matching keys wins.
+ */
+export function approvalStatusFor(
+  map: Map<string, ApprovalEntry>,
+  target: { url?: string | null; address?: string; eventId?: string },
+): ApprovalDecision | undefined {
+  let best: ApprovalEntry | undefined;
+
+  const candidates: string[] = [];
+  const normUrl = target.url ? normalizeRelayUrl(target.url) : null;
+  if (normUrl) candidates.push(`url:${normUrl}`);
+  if (target.address) candidates.push(`addr:${target.address}`);
+  if (target.eventId) candidates.push(`id:${target.eventId}`);
+
+  for (const key of candidates) {
+    const entry = map.get(key);
+    if (entry && (!best || entry.createdAt > best.createdAt)) {
+      best = entry;
     }
   }
 
-  return statusMap;
+  return best?.status;
+}
+
+/** Address (`kind:pubkey:d`) of a submission event — stable across resubmissions per author. */
+function submissionAddress(ev: NostrEvent): string | undefined {
+  const dTag = ev.tags.find(([t]) => t === 'd')?.[1];
+  return dTag ? `${KIND_RELAY_SUBMISSION}:${ev.pubkey}:${dTag}` : undefined;
 }
 
 // ─── Hooks ─────────────────────────────────────────────────────────────────
@@ -133,13 +214,19 @@ function buildApprovalMap(approvalEvents: NostrEvent[]): Map<string, SubmissionS
 /** Query ALL submissions from the app relay group, merging approval decisions */
 export function useSubmissions(filter?: { status?: SubmissionStatus; limit?: number }) {
   const { nostr } = useNostr();
+  // Authorized approvers: owner + admins + mods (role lists are themselves
+  // verified with verifyEvent inside useAdminAccess)
+  const { adminList, modList, isLoading: rolesLoading } = useAdminAccess();
+  const approverKey = [OWNER_PUBKEY_HEX, ...adminList, ...modList].sort().join(',');
 
   return useQuery({
-    queryKey: ['submissions', ...APP_RELAY_URLS, filter?.status],
+    queryKey: ['submissions', ...APP_RELAY_URLS, filter?.status, approverKey],
     queryFn: async () => {
       const relayGroup = nostr.group(APP_RELAY_URLS);
+      const approvers = new Set([OWNER_PUBKEY_HEX, ...adminList, ...modList]);
 
-      // Fetch both submissions and approval events in parallel
+      // Fetch both submissions and approval events in parallel.
+      // Approvals are restricted to authorized authors at the relay level too.
       const [submissionEvents, approvalEvents] = await Promise.all([
         relayGroup.query([
           {
@@ -151,19 +238,21 @@ export function useSubmissions(filter?: { status?: SubmissionStatus; limit?: num
         relayGroup.query([
           {
             kinds: [KIND_RELAY_SUBMISSION],
+            authors: [...approvers],
             '#t': ['relay-approval'],
             limit: 200,
           },
         ]),
       ]);
 
-      // Build the approval status override map
-      const approvalStatusMap = buildApprovalMap(approvalEvents);
+      // Build the approval status override map (verifies authorship + signatures)
+      const approvalStatusMap = buildApprovalMap(approvalEvents, approvers);
 
-      // Deduplicate submissions by URL (latest wins)
+      // Deduplicate submissions by canonical (normalized) relay URL, latest wins
       const latestByUrl = new Map<string, NostrEvent>();
       for (const ev of submissionEvents) {
-        const url = ev.tags.find(([t]) => t === 'r')?.[1];
+        const rTagUrl = ev.tags.find(([t]) => t === 'r')?.[1];
+        const url = rTagUrl ? normalizeRelayUrl(rTagUrl) : null;
         if (!url) continue;
         const existing = latestByUrl.get(url);
         if (!existing || ev.created_at > existing.created_at) {
@@ -175,8 +264,14 @@ export function useSubmissions(filter?: { status?: SubmissionStatus; limit?: num
         .map(parseSubmission)
         .filter((s): s is Submission => s !== null)
         .map((sub) => {
-          // Override status with latest approval decision if one exists
-          const overrideStatus = approvalStatusMap.get(sub.eventId);
+          // Override status with latest approval decision if one exists.
+          // Look up by normalized URL first (stable across resubmissions),
+          // then address, then legacy event id.
+          const overrideStatus = approvalStatusFor(approvalStatusMap, {
+            url: sub.url,
+            address: submissionAddress(sub.raw),
+            eventId: sub.eventId,
+          });
           if (overrideStatus) {
             return { ...sub, status: overrideStatus };
           }
@@ -186,6 +281,8 @@ export function useSubmissions(filter?: { status?: SubmissionStatus; limit?: num
       if (filter?.status) return parsed.filter((s) => s.status === filter.status);
       return parsed;
     },
+    // Wait until role lists have loaded so approvals can be authorized correctly
+    enabled: !rolesLoading,
     staleTime: 1000 * 30,
     retry: 2,
   });
@@ -252,6 +349,7 @@ export function useDashboardStats() {
 export function useApproveSubmission() {
   const { nostr } = useNostr();
   const { user } = useCurrentUser();
+  const { canApprove } = useAdminAccess();
   const qc = useQueryClient();
 
   return useMutation({
@@ -261,13 +359,17 @@ export function useApproveSubmission() {
       reason?: string;
     }) => {
       if (!user) throw new Error('Not logged in');
+      // Only owner/admin/mod may publish approval decisions
+      if (!canApprove) throw new Error('Insufficient permissions: moderator role required');
 
       const dTag = `${APPROVAL_D_PREFIX}${submission.eventId}`;
+      const normUrl = normalizeRelayUrl(submission.url) ?? submission.url;
+      const address = submissionAddress(submission.raw);
 
       const event = await user.signer.signEvent({
         kind: KIND_RELAY_SUBMISSION,
         content: JSON.stringify({
-          url: submission.url,
+          url: normUrl,
           decision,
           reason: reason ?? '',
           reviewedAt: Math.floor(Date.now() / 1000),
@@ -276,10 +378,13 @@ export function useApproveSubmission() {
         tags: [
           ['d', dTag],
           ['e', submission.eventId],
-          ['r', submission.url],
+          // Address tag keeps the decision linked across resubmissions by the
+          // same author; the r tag (normalized URL) links across authors.
+          ...(address ? [['a', address]] : []),
+          ['r', normUrl],
           ['status', decision],
           ['t', 'relay-approval'],
-          ['alt', `Relay submission ${decision}: ${submission.url}`],
+          ['alt', `Relay submission ${decision}: ${normUrl}`],
           ...(reason ? [['reason', reason]] : []),
         ],
         created_at: Math.floor(Date.now() / 1000),
@@ -291,13 +396,14 @@ export function useApproveSubmission() {
     },
     onSuccess: ({ submission, decision }) => {
       // Optimistic cache update: immediately update the submission status
-      // across all matching query caches so the UI reflects the decision instantly
+      // across all matching query caches so the UI reflects the decision instantly.
+      // Match by canonical URL so superseded/resubmitted events stay covered.
       qc.setQueriesData<Submission[]>(
         { queryKey: ['submissions'] },
         (old) => {
           if (!old) return old;
           return old.map((s) =>
-            s.eventId === submission.eventId
+            s.url === submission.url || s.eventId === submission.eventId
               ? { ...s, status: decision as SubmissionStatus }
               : s
           );

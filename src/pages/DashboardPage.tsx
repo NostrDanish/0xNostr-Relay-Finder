@@ -477,6 +477,22 @@ export function DashboardPage() {
   const [search, setSearch] = useState('');
   const [decisionTarget, setDecisionTarget] = useState<{ sub: Submission; decision: 'approved' | 'rejected' } | null>(null);
 
+  // Background relay crawler: passively discovers new relay URLs from
+  // kind:10002 / kind:3 / kind:30166 events, excluding relays we already
+  // know (seed + approved submissions). Results populate the shared
+  // 'relay-crawler' query cache consumed by the directory. (Must run
+  // unconditionally, before the auth-gate early returns below.)
+  const knownRelayUrls = useMemo(
+    () => [
+      ...RELAY_SEED_DATA.map((r) => r.url),
+      ...(allSubmissions ?? [])
+        .filter((s) => s.status === 'approved')
+        .map((s) => s.url),
+    ],
+    [allSubmissions],
+  );
+  useRelayCrawler(knownRelayUrls);
+
   const displayName = metadata?.name ?? (user ? genUserName(user.pubkey) : 'User');
   const avatar = metadata?.picture;
 

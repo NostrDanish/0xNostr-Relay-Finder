@@ -66,16 +66,26 @@ export async function createNip98AuthEvent(
 
 // ─── Management API client ────────────────────────────────────────────────────
 
+/** Produces a fresh NIP-98 Authorization header value on demand. */
+export type AuthTokenProvider = () => Promise<string>;
+
 export class RelayManagementClient {
   private relayUrl: string;
-  private authToken: string | null = null;
+  private authTokenProvider: AuthTokenProvider | null = null;
 
-  constructor(relayUrl: string, authToken?: string) {
+  constructor(relayUrl: string, authToken?: string | AuthTokenProvider) {
     // Convert wss:// to https:// for HTTP requests
     this.relayUrl = relayUrl
       .replace(/^wss:\/\//, 'https://')
       .replace(/^ws:\/\//, 'http://');
-    this.authToken = authToken ?? null;
+    // A static token is wrapped in a provider for backwards compatibility,
+    // but callers should pass a provider so each request gets a FRESH token
+    // (NIP-98 auth events expire after ~60s; caching them for minutes breaks auth)
+    this.authTokenProvider = typeof authToken === 'function'
+      ? authToken
+      : authToken
+        ? async () => authToken
+        : null;
   }
 
   private async call<T>(method: string, params: unknown[] = []): Promise<T> {
@@ -83,8 +93,8 @@ export class RelayManagementClient {
       'Content-Type': 'application/nostr+json+rpc',
     };
 
-    if (this.authToken) {
-      headers['Authorization'] = this.authToken;
+    if (this.authTokenProvider) {
+      headers['Authorization'] = await this.authTokenProvider();
     }
 
     const response = await fetch(this.relayUrl, {
@@ -239,17 +249,16 @@ export function useRelayManagementClient(relayUrl: string) {
     queryFn: async () => {
       if (!user) return null;
 
-      try {
-        const authToken = await createNip98AuthEvent(
-          user.signer,
-          relayUrl.replace(/^wss:\/\//, 'https://').replace(/^ws:\/\//, 'http://'),
-          'POST',
-        );
+      // Sign a FRESH kind:27235 NIP-98 event per API call — tokens expire
+      // after ~60s, so caching a signed token here would silently fail.
+      const httpUrl = relayUrl
+        .replace(/^wss:\/\//, 'https://')
+        .replace(/^ws:\/\//, 'http://');
 
-        return new RelayManagementClient(relayUrl, authToken);
-      } catch {
-        return null;
-      }
+      return new RelayManagementClient(
+        relayUrl,
+        () => createNip98AuthEvent(user.signer, httpUrl, 'POST'),
+      );
     },
     enabled: !!user,
     staleTime: 1000 * 60 * 5,

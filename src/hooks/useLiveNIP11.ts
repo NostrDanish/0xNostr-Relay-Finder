@@ -8,13 +8,16 @@
 import { useQuery } from '@tanstack/react-query';
 import type { NIP11Info } from '@/types/relay';
 import { corsProxy } from '@/lib/constants';
+import { relayHttpUrl } from '@/lib/relayUrl';
 
 /**
  * Fetches the NIP-11 info document for a relay URL.
  * Uses CORS proxy if direct fetch fails.
  */
 async function fetchNIP11(wsUrl: string): Promise<NIP11Info | null> {
-  const httpUrl = wsUrl.replace(/^wss?:\/\//, 'https://');
+  // wss:// → https://, ws:// → http:// (ws:// is NOT served over https)
+  const httpUrl = relayHttpUrl(wsUrl);
+  if (!httpUrl) return null;
 
   try {
     // Try direct fetch first

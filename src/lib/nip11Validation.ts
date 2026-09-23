@@ -28,7 +28,8 @@ export interface Nip11Validation {
   issueCount: number;
 }
 
-const HEX_64 = /^[0-9a-f]{64}$/i;
+const HEX_64_LOWER = /^[0-9a-f]{64}$/;
+const HEX_64_ANY_CASE = /^[0-9a-f]{64}$/i;
 const URL_RE = /^https?:\/\/.+/i;
 
 /** Known NIP numbers (from the official registry) — used for sanity warnings */
@@ -57,15 +58,19 @@ export function validateNip11(doc: NIP11Info | null | undefined): Nip11Validatio
     if (!Array.isArray(doc.supported_nips)) {
       issues.push({ severity: 'error', field: 'supported_nips', message: 'supported_nips must be an array' });
     } else {
-      const bad = doc.supported_nips.filter((n) => typeof n !== 'number' || !Number.isInteger(n) || n < 0);
+      const bad = doc.supported_nips.filter((n) => typeof n !== 'number' || !Number.isInteger(n) || n < 1);
       if (bad.length > 0) {
         issues.push({ severity: 'error', field: 'supported_nips', message: `Invalid NIP entries: ${bad.slice(0, 5).join(', ')}` });
       }
     }
   }
 
-  if (doc.pubkey !== undefined && !HEX_64.test(doc.pubkey)) {
-    issues.push({ severity: 'error', field: 'pubkey', message: 'pubkey is not a valid 64-char hex string' });
+  if (doc.pubkey !== undefined) {
+    if (!HEX_64_ANY_CASE.test(doc.pubkey)) {
+      issues.push({ severity: 'error', field: 'pubkey', message: 'pubkey is not a valid 64-char hex string' });
+    } else if (!HEX_64_LOWER.test(doc.pubkey)) {
+      issues.push({ severity: 'warning', field: 'pubkey', message: 'pubkey contains uppercase characters — hex pubkeys should be lowercase' });
+    }
   }
 
   if (doc.name !== undefined && typeof doc.name !== 'string') {
@@ -94,7 +99,7 @@ export function validateNip11(doc: NIP11Info | null | undefined): Nip11Validatio
 
   if (doc.limitation?.min_pow_difficulty !== undefined) {
     const pow = doc.limitation.min_pow_difficulty;
-    if (typeof pow !== 'number' || pow < 0 || pow > 64) {
+    if (typeof pow !== 'number' || !Number.isFinite(pow) || pow < 0 || pow > 64) {
       issues.push({ severity: 'warning', field: 'limitation.min_pow_difficulty', message: `Unusual PoW difficulty: ${pow}` });
     }
   }

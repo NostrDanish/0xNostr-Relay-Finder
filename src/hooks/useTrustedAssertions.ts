@@ -16,7 +16,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useNostr } from '@nostrify/react';
-import type { NostrEvent } from '@nostrify/nostrify';
+import type { NostrEvent, NostrFilter } from '@nostrify/nostrify';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import {
   KIND_TRUSTED_ASSERTION_USER,
@@ -103,8 +103,9 @@ export function useTrustedProviders() {
     queryFn: async () => {
       if (!user) return DEFAULT_TRUSTED_PROVIDERS;
 
-      const relayGroup = nostr.group(APP_RELAY_URLS);
-      const events = await relayGroup.query([
+      // The user's kind:10040 provider list lives on THEIR relays, not the
+      // app relay group — query the full pool (app relays + user relays).
+      const events = await nostr.query([
         {
           kinds: [KIND_TRUSTED_PROVIDERS],
           authors: [user.pubkey],
@@ -114,7 +115,8 @@ export function useTrustedProviders() {
 
       if (events.length === 0) return DEFAULT_TRUSTED_PROVIDERS;
 
-      const event = events[0];
+      // Use the newest provider list (replaceable event)
+      const event = events.reduce((a, b) => (b.created_at > a.created_at ? b : a));
       const providers: TrustedProvider[] = [];
 
       for (const tag of event.tags) {
@@ -175,6 +177,94 @@ export function useProviderMetadata(providerPubkey: string) {
 
 // ─── Assertion queries ────────────────────────────────────────────────────────
 
+/** Minimal structural type for the nostr client (avoids depending on pool generics). */
+interface NostrQuerier {
+  group(urls: string[]): {
+    query(filters: NostrFilter[], opts?: { signal?: AbortSignal }): Promise<NostrEvent[]>;
+  };
+}
+
+/**
+ * Fetch assertions of `kind` with d-tag `dTagValue` from each provider,
+ * querying the provider's own relayHint in addition to the app relays
+ * (NIP-85 assertions live on the provider's relay, e.g. wss://nip85.nostr.band).
+ *
+ * Assertions are deduplicated to the newest event per (provider pubkey, d)
+ * before scores are compared. Tracks the real provider pubkey.
+ */
+async function fetchAssertionScores(
+  nostr: NostrQuerier,
+  providers: TrustedProvider[],
+  kind: number,
+  dTagValue: string,
+): Promise<RelayTrustScore> {
+  const perProvider = await Promise.all(
+    providers.map(async (provider) => {
+      try {
+        const group = nostr.group([provider.relayHint, ...APP_RELAY_URLS]);
+        return await group.query([
+          {
+            kinds: [kind],
+            authors: [provider.pubkey],
+            '#d': [dTagValue],
+            limit: 20,
+          },
+        ]);
+      } catch {
+        return [] as NostrEvent[];
+      }
+    }),
+  );
+
+  // Dedup to the newest assertion per (provider pubkey, d)
+  const latestByProviderD = new Map<string, NostrEvent>();
+  for (const ev of perProvider.flat()) {
+    const d = ev.tags.find(([t]) => t === 'd')?.[1] ?? '';
+    const key = `${ev.pubkey}:${d}`;
+    const existing = latestByProviderD.get(key);
+    if (!existing || ev.created_at > existing.created_at) {
+      latestByProviderD.set(key, ev);
+    }
+  }
+
+  const allScores: RelayTrustScore['allScores'] = [];
+  let bestScore: number | undefined;
+  let bestProviderPubkey: string | undefined;
+  let bestProviderName: string | undefined;
+
+  for (const event of latestByProviderD.values()) {
+    const provider = providers.find((p) => p.pubkey === event.pubkey);
+    if (!provider) continue;
+
+    // Look for rank tag
+    const rankTag = event.tags.find(([t]) => t === 'rank');
+    if (!rankTag) continue;
+
+    const score = parseInt(rankTag[1]);
+    if (isNaN(score) || score < 0 || score > 100) continue;
+
+    allScores.push({
+      provider: provider.name ?? event.pubkey.slice(0, 8),
+      score,
+      relay: provider.relayHint,
+    });
+
+    // Keep highest score — track the REAL provider pubkey (not the display name)
+    if (bestScore === undefined || score > bestScore) {
+      bestScore = score;
+      bestProviderPubkey = event.pubkey;
+      bestProviderName = provider.name ?? event.pubkey.slice(0, 8);
+    }
+  }
+
+  return {
+    score: bestScore,
+    providerPubkey: bestProviderPubkey,
+    providerName: bestProviderName,
+    allScores,
+  };
+}
+
 /**
  * Fetch trusted assertions for a relay URL.
  * Uses kind:30385 (external identifier) for URL-based trust scores.
@@ -192,52 +282,7 @@ export function useRelayTrustScore(relayUrl: string) {
 
       // Query kind:30385 for external identifier assertions about this relay URL
       // The d tag should be the relay URL
-      const relayGroup = nostr.group(APP_RELAY_URLS);
-      const providerPubkeys = providers.map((p) => p.pubkey);
-
-      const events = await relayGroup.query([
-        {
-          kinds: [KIND_TRUSTED_ASSERTION_EXTERNAL],
-          authors: providerPubkeys,
-          '#d': [relayUrl],
-          limit: 20,
-        },
-      ]);
-
-      const allScores: RelayTrustScore['allScores'] = [];
-      let bestScore: number | undefined;
-      let bestProvider: string | undefined;
-
-      for (const event of events) {
-        const provider = providers.find((p) => p.pubkey === event.pubkey);
-        if (!provider) continue;
-
-        // Look for rank tag
-        const rankTag = event.tags.find(([t]) => t === 'rank');
-        if (!rankTag) continue;
-
-        const score = parseInt(rankTag[1]);
-        if (isNaN(score) || score < 0 || score > 100) continue;
-
-        allScores.push({
-          provider: provider.name ?? provider.pubkey.slice(0, 8),
-          score,
-          relay: provider.relayHint,
-        });
-
-        // Keep highest score
-        if (bestScore === undefined || score > bestScore) {
-          bestScore = score;
-          bestProvider = provider.name ?? provider.pubkey.slice(0, 8);
-        }
-      }
-
-      return {
-        score: bestScore,
-        providerPubkey: bestProvider,
-        providerName: bestProvider,
-        allScores,
-      } as RelayTrustScore;
+      return fetchAssertionScores(nostr, providers, KIND_TRUSTED_ASSERTION_EXTERNAL, relayUrl);
     },
     enabled: !!providers,
     staleTime: 1000 * 60 * 10,
@@ -259,50 +304,7 @@ export function useOperatorTrustScore(operatorPubkey: string) {
         return { score: undefined, allScores: [] } as RelayTrustScore;
       }
 
-      const relayGroup = nostr.group(APP_RELAY_URLS);
-      const providerPubkeys = providers.map((p) => p.pubkey);
-
-      const events = await relayGroup.query([
-        {
-          kinds: [KIND_TRUSTED_ASSERTION_USER],
-          authors: providerPubkeys,
-          '#d': [operatorPubkey],
-          limit: 20,
-        },
-      ]);
-
-      const allScores: RelayTrustScore['allScores'] = [];
-      let bestScore: number | undefined;
-      let bestProvider: string | undefined;
-
-      for (const event of events) {
-        const provider = providers.find((p) => p.pubkey === event.pubkey);
-        if (!provider) continue;
-
-        const rankTag = event.tags.find(([t]) => t === 'rank');
-        if (!rankTag) continue;
-
-        const score = parseInt(rankTag[1]);
-        if (isNaN(score) || score < 0 || score > 100) continue;
-
-        allScores.push({
-          provider: provider.name ?? provider.pubkey.slice(0, 8),
-          score,
-          relay: provider.relayHint,
-        });
-
-        if (bestScore === undefined || score > bestScore) {
-          bestScore = score;
-          bestProvider = provider.name ?? provider.pubkey.slice(0, 8);
-        }
-      }
-
-      return {
-        score: bestScore,
-        providerPubkey: bestProvider,
-        providerName: bestProvider,
-        allScores,
-      } as RelayTrustScore;
+      return fetchAssertionScores(nostr, providers, KIND_TRUSTED_ASSERTION_USER, operatorPubkey);
     },
     enabled: !!providers,
     staleTime: 1000 * 60 * 10,
@@ -324,50 +326,7 @@ export function useSubmissionTrustScore(submissionAddress: string) {
         return { score: undefined, allScores: [] } as RelayTrustScore;
       }
 
-      const relayGroup = nostr.group(APP_RELAY_URLS);
-      const providerPubkeys = providers.map((p) => p.pubkey);
-
-      const events = await relayGroup.query([
-        {
-          kinds: [KIND_TRUSTED_ASSERTION_ADDRESSABLE],
-          authors: providerPubkeys,
-          '#d': [submissionAddress],
-          limit: 20,
-        },
-      ]);
-
-      const allScores: RelayTrustScore['allScores'] = [];
-      let bestScore: number | undefined;
-      let bestProvider: string | undefined;
-
-      for (const event of events) {
-        const provider = providers.find((p) => p.pubkey === event.pubkey);
-        if (!provider) continue;
-
-        const rankTag = event.tags.find(([t]) => t === 'rank');
-        if (!rankTag) continue;
-
-        const score = parseInt(rankTag[1]);
-        if (isNaN(score) || score < 0 || score > 100) continue;
-
-        allScores.push({
-          provider: provider.name ?? provider.pubkey.slice(0, 8),
-          score,
-          relay: provider.relayHint,
-        });
-
-        if (bestScore === undefined || score > bestScore) {
-          bestScore = score;
-          bestProvider = provider.name ?? provider.pubkey.slice(0, 8);
-        }
-      }
-
-      return {
-        score: bestScore,
-        providerPubkey: bestProvider,
-        providerName: bestProvider,
-        allScores,
-      } as RelayTrustScore;
+      return fetchAssertionScores(nostr, providers, KIND_TRUSTED_ASSERTION_ADDRESSABLE, submissionAddress);
     },
     enabled: !!providers,
     staleTime: 1000 * 60 * 10,

@@ -26,6 +26,10 @@ function MonitorRow({ obs }: { obs: MonitorObservation }) {
   const name = author.data?.metadata?.name ?? genUserName(obs.monitorPubkey);
   const pic = author.data?.metadata?.picture;
 
+  // Fresh observations are < 3h old; older ones are stale and shouldn't
+  // show the same "confirmed online" signal as a fresh check.
+  const isFresh = Date.now() / 1000 - obs.checkedAt <= 3 * 3600;
+
   return (
     <div className="flex items-center gap-2.5 py-2 px-2 rounded-lg hover:bg-muted/30 transition-colors">
       <Avatar className="w-6 h-6 flex-shrink-0">
@@ -48,7 +52,11 @@ function MonitorRow({ obs }: { obs: MonitorObservation }) {
           {timeAgo(obs.checkedAt * 1000)}
         </span>
         {obs.online ? (
-          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+          isFresh ? (
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+          ) : (
+            <Clock className="w-3.5 h-3.5 text-yellow-500" />
+          )
         ) : (
           <XCircle className="w-3.5 h-3.5 text-red-500" />
         )}
@@ -110,12 +118,14 @@ export function MonitorConsensusCard({ relayUrl }: { relayUrl: string }) {
               'text-xs ml-auto',
               consensus.online
                 ? 'border-emerald-500/30 text-emerald-500'
-                : consensus.liveness === 'offline'
-                  ? 'border-yellow-500/30 text-yellow-500'
-                  : 'border-red-500/30 text-red-500',
+                : consensus.liveness === 'dead'
+                  ? 'border-red-500/30 text-red-500'
+                  : 'border-yellow-500/30 text-yellow-500',
             )}
           >
-            {consensus.online ? 'Online' : consensus.liveness === 'offline' ? 'Offline' : 'Dead'}
+            {/* Three-way: consensus online → Online; not seen in 7d → Dead;
+                otherwise (incl. fresh-but-sub-quorum or failed open checks) → Offline */}
+            {consensus.online ? 'Online' : consensus.liveness === 'dead' ? 'Dead' : 'Offline'}
           </Badge>
         </CardTitle>
       </CardHeader>

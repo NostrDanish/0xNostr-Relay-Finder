@@ -63,7 +63,7 @@ function getRelayStatus(relay: LiveRelayRecord): 'online' | 'slow' | 'offline' {
 function placeRelays(relays: LiveRelayRecord[]): PlacedRelay[] {
   return relays
     .map((relay) => {
-      let coords = null;
+      let coords: { lat: number; lng: number } | null = null;
       if (relay.geohash) {
         coords = decodeGeohash(relay.geohash);
       }

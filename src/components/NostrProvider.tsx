@@ -55,10 +55,17 @@ const NostrProvider: React.FC<NostrProviderProps> = (props) => {
   // Keep the ref in sync so the AUTH callback always sees the latest signer.
   signerRef.current = currentSigner;
 
-  // Invalidate Nostr queries when relay metadata changes
+  // Invalidate Nostr-dependent queries when relay metadata changes.
+  // These caches are keyed separately from ['nostr'] but still query the
+  // pool, so they must be refreshed too or they serve stale relay data.
   useEffect(() => {
     relayMetadata.current = config.relayMetadata;
     queryClient.invalidateQueries({ queryKey: ['nostr'] });
+    queryClient.invalidateQueries({ queryKey: ['relay-directory'] });
+    queryClient.invalidateQueries({ queryKey: ['nip66-monitor-feed'] });
+    queryClient.invalidateQueries({ queryKey: ['nip66-discovery-feed'] });
+    queryClient.invalidateQueries({ queryKey: ['relay-crawler'] });
+    queryClient.invalidateQueries({ queryKey: ['nip11-batch'] });
   }, [config.relayMetadata, queryClient]);
 
   // Initialize NPool only once
@@ -109,7 +116,9 @@ const NostrProvider: React.FC<NostrProviderProps> = (props) => {
 
         return [...allRelays];
       },
-      eoseTimeout: 200,
+      // NOTE: no eoseTimeout override — a short timeout truncates
+      // multi-relay queries, dropping newer events from slower relays.
+      // Nostrify's default is used instead.
     });
   }
 

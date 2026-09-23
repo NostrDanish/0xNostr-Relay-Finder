@@ -97,6 +97,9 @@ export type NIP11Info = {
   tags?: string[];
   posting_policy?: string;
   payments_url?: string;
+  terms_of_service?: string;
+  /** Relay's own pubkey (non-standard NIP-11 extension used by some relays) */
+  self?: string;
   icon?: string;
   fees?: {
     admission?: Array<{ amount: number; unit: string }>;

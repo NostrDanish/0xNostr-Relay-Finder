@@ -14,7 +14,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useSeoMeta } from '@unhead/react';
 import {
   Globe2, MapPin, Radio, Wifi, Filter, Search, CheckCircle2,
-  XCircle, AlertCircle, Layers,
+  XCircle, AlertCircle, Layers, Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

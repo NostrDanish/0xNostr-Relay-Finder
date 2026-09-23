@@ -54,12 +54,18 @@ export interface VerificationReport {
 
 // ─── NIP Test Definitions ─────────────────────────────────────────────────────
 
+/** Shared per-connection context passed to every test. */
+interface NIPTestContext {
+  /** Set true as soon as an AUTH challenge arrives — listener attached at connection setup so it can't be missed. */
+  authSeen: { received: boolean };
+}
+
 interface NIPTest {
   nip: number;
   name: string;
   method: string;
   /** Execute the test on an open WebSocket. Returns pass/fail with detail. */
-  test: (ws: WebSocket) => Promise<{ passed: boolean; detail: string; latencyMs: number }>;
+  test: (ws: WebSocket, ctx?: NIPTestContext) => Promise<{ passed: boolean; detail: string; latencyMs: number }>;
 }
 
 /** Generate a random hex string (for subscription IDs) */
@@ -207,14 +213,23 @@ const NIP_TESTS: NIPTest[] = [
     nip: 42,
     name: 'Authentication',
     method: 'Check if relay sends AUTH challenge on connect',
-    test: async (ws) => {
-      // NIP-42 relays send an AUTH challenge shortly after connection
+    test: async (ws, ctx) => {
+      // The AUTH listener was attached at connection setup, so a challenge
+      // that arrived before this test ran is still captured (not order-dependent)
+      if (ctx?.authSeen.received) {
+        return {
+          passed: true,
+          detail: 'Relay sent AUTH challenge (captured on connect)',
+          latencyMs: 0,
+        };
+      }
       const result = await waitForMessage(ws, (d) =>
         d[0] === 'AUTH',
       2000);
+      const matched = result.matched || (ctx?.authSeen.received ?? false);
       return {
-        passed: result.matched,
-        detail: result.matched ? 'Relay sent AUTH challenge' : 'No AUTH challenge received (may not require auth)',
+        passed: matched,
+        detail: matched ? 'Relay sent AUTH challenge' : 'No AUTH challenge received (may not require auth)',
         latencyMs: result.latencyMs,
       };
     },
@@ -224,7 +239,9 @@ const NIP_TESTS: NIPTest[] = [
     name: 'Command Results',
     method: 'Send malformed EVENT, expect OK with failure',
     test: async (ws) => {
-      // Send an invalid event to check if relay responds with OK
+      // CAUTION: deliberately sends an event with an INVALID signature.
+      // A NIP-20-compliant relay MUST respond with OK — and MUST reject it.
+      console.warn('[NIPVerifier] NIP-20 test sends a deliberately invalid (fake-signature) event to the relay.');
       const fakeEvent = {
         id: randomHex(64),
         pubkey: randomHex(64),
@@ -240,9 +257,17 @@ const NIP_TESTS: NIPTest[] = [
       3000);
       if (result.matched && result.data) {
         const accepted = result.data[2] as boolean;
+        // Honest result: accepting an event with an invalid signature is a FAILURE
+        if (accepted) {
+          return {
+            passed: false,
+            detail: 'Relay ACCEPTED an event with an invalid signature — signature validation broken or missing',
+            latencyMs: result.latencyMs,
+          };
+        }
         return {
           passed: true,
-          detail: accepted ? 'OK: accepted (unexpected for fake sig)' : `OK: rejected (${String(result.data[3] ?? 'invalid').slice(0, 60)})`,
+          detail: `OK: correctly rejected invalid event (${String(result.data[3] ?? 'invalid').slice(0, 60)})`,
           latencyMs: result.latencyMs,
         };
       }
@@ -355,7 +380,10 @@ const NIP_TESTS: NIPTest[] = [
     name: 'Proof of Work',
     method: 'Send event with nonce tag, check if relay validates PoW',
     test: async (ws) => {
-      // Send an event with a nonce tag to see if relay checks PoW
+      // CAUTION: deliberately sends an event with an INVALID signature and a
+      // nonce tag claiming unmet difficulty. Accepting it means the relay
+      // validates neither signatures nor PoW.
+      console.warn('[NIPVerifier] NIP-13 test sends a deliberately invalid (fake-signature) PoW event to the relay.');
       const fakeEvent = {
         id: randomHex(64),
         pubkey: randomHex(64),
@@ -373,16 +401,23 @@ const NIP_TESTS: NIPTest[] = [
       if (result.matched && result.data) {
         const accepted = result.data[2] as boolean;
         const message = String(result.data[3] ?? '');
-        if (message.toLowerCase().includes('pow') || message.toLowerCase().includes('difficulty')) {
+        if (!accepted && (message.toLowerCase().includes('pow') || message.toLowerCase().includes('difficulty'))) {
           return {
             passed: true,
             detail: 'Relay validates PoW (rejected low-difficulty event)',
             latencyMs: result.latencyMs,
           };
         }
+        if (accepted) {
+          return {
+            passed: false,
+            detail: 'Relay ACCEPTED a fake-signature PoW test event — does not enforce PoW or signature validation',
+            latencyMs: result.latencyMs,
+          };
+        }
         return {
-          passed: accepted,
-          detail: accepted ? 'PoW accepted (may not enforce)' : 'PoW rejected',
+          passed: true,
+          detail: `Relay rejected the test event (${message.slice(0, 60) || 'invalid'})`,
           latencyMs: result.latencyMs,
         };
       }
@@ -426,7 +461,9 @@ const NIP_TESTS: NIPTest[] = [
     name: 'Membership & Access',
     method: 'Check if relay supports kind:28934 join requests',
     test: async (ws) => {
-      // Check if relay responds to a join request event
+      // CAUTION: deliberately sends a join request with an INVALID signature.
+      // A NIP-43 relay must never accept it.
+      console.warn('[NIPVerifier] NIP-43 test sends a deliberately invalid (fake-signature) join request to the relay.');
       const fakeEvent = {
         id: randomHex(64),
         pubkey: randomHex(64),
@@ -452,9 +489,16 @@ const NIP_TESTS: NIPTest[] = [
             latencyMs: result.latencyMs,
           };
         }
+        if (accepted) {
+          return {
+            passed: false,
+            detail: 'Relay ACCEPTED a join request with an invalid signature — NIP-43 handling not trusted',
+            latencyMs: result.latencyMs,
+          };
+        }
         return {
-          passed: accepted,
-          detail: accepted ? 'Join request accepted' : `Join request rejected: ${message.slice(0, 60)}`,
+          passed: false,
+          detail: `Join request rejected without NIP-43-specific reason: ${message.slice(0, 60) || 'no reason'}`,
           latencyMs: result.latencyMs,
         };
       }
@@ -536,6 +580,24 @@ export function useNIPVerifier() {
         };
       });
 
+      // Attach the AUTH listener IMMEDIATELY at connection setup so a NIP-42
+      // challenge that arrives before the AUTH test runs is not missed
+      // (the test itself runs after earlier tests and would otherwise be
+      // order-dependent).
+      const authSeen = { received: false };
+      ws.addEventListener('message', (ev) => {
+        try {
+          const parsed = JSON.parse(ev.data as string);
+          if (Array.isArray(parsed) && parsed[0] === 'AUTH') {
+            authSeen.received = true;
+          }
+        } catch {
+          // not JSON — ignore
+        }
+      });
+
+      const testCtx: NIPTestContext = { authSeen };
+
       // Run each NIP test sequentially
       for (const nip of toTest) {
         const testDef = NIP_TEST_MAP.get(nip)!;
@@ -556,7 +618,7 @@ export function useNIPVerifier() {
         setReport({ ...reportData });
 
         try {
-          const testResult = await testDef.test(ws);
+          const testResult = await testDef.test(ws, testCtx);
           result.status = testResult.passed ? 'verified' : 'failed';
           result.detail = testResult.detail;
           result.latencyMs = testResult.latencyMs;

@@ -24,6 +24,7 @@ import {
   type NIP66MonitorEvent,
 } from '@/hooks/useNIP66Monitor';
 import { TRUSTED_MONITOR_PUBKEYS } from '@/lib/constants';
+import { normalizeRelayUrl } from '@/lib/relayUrl';
 
 // ─── Auto-tag from NIPs (lightweight version for discovered relays) ─────────
 
@@ -86,6 +87,11 @@ function observationToRecord(
 
   const blossomSupported = nips.includes(94) || nips.includes(96);
 
+  // Liveness: NIP-66 monitors publish kind:30166 for FAILED checks too
+  // (R-tag `!open`, no rtt-open). Only treat the relay as online when the
+  // open check didn't explicitly fail AND we have a measured open RTT.
+  const isOnline = best.checks.open !== false && best.rttOpen != null;
+
   return {
     id: `discovered:${relayUrl}`,
     url: relayUrl,
@@ -104,7 +110,7 @@ function observationToRecord(
       features: ['Discovered via NIP-66'],
     }],
     isFree: !best.requirements.payment,
-    isOnline: true, // Monitor published an observation, so it was reachable
+    isOnline, // Derived from the monitor's open check + rtt-open, not mere existence of an event
     uptimePercent30d: 0, // Unknown — no history yet; RealUptimePanel will compute live
     uptimeSpark: [],
     avgLatencyMs: best.rttOpen,
@@ -118,7 +124,7 @@ function observationToRecord(
     nip66: {
       enriched: true,
       lastMonitorEvent: best.checkedAt * 1000,
-      liveStatus: 'online',
+      liveStatus: isOnline ? 'online' : 'offline',
       monitorLatencyMs: best.rttOpen,
       monitorPubkey: best.monitorPubkey,
       capabilities: {
@@ -151,11 +157,21 @@ export function useDiscoveredRelays(knownRelayUrls: string[], maxDiscovered = 15
   const discovered = useMemo(() => {
     if (!discoveryFeed) return [];
 
-    const knownSet = new Set(knownRelayUrls);
+    // Normalize known URLs so equivalent forms (case, trailing slash,
+    // default port, ws://) dedup against the same physical relay.
+    const knownSet = new Set(
+      knownRelayUrls.map((u) => normalizeRelayUrl(u) ?? u),
+    );
     const records: RelayRecord[] = [];
 
-    for (const [relayUrl, monitorMap] of discoveryFeed) {
-      if (knownSet.has(relayUrl)) continue;
+    // Multiple raw d-tags can normalize to the same canonical URL — dedup.
+    const seen = new Set<string>();
+
+    for (const [rawRelayUrl, monitorMap] of discoveryFeed) {
+      const relayUrl = normalizeRelayUrl(rawRelayUrl);
+      if (!relayUrl) continue; // skip malformed d-tags
+      if (knownSet.has(relayUrl) || seen.has(relayUrl)) continue;
+      seen.add(relayUrl);
 
       // Pick the best observation: prefer trusted monitors, then most recent
       const observations = Array.from(monitorMap.values()).sort((a, b) => {

@@ -155,7 +155,9 @@ export function useFavoriteRelays() {
 
       if (events.length === 0) return null;
 
-      return parseFavoriteRelays(events[0]);
+      // Use the newest favorites list by created_at (replaceable event)
+      const latest = events.reduce((a, b) => (b.created_at > a.created_at ? b : a));
+      return parseFavoriteRelays(latest);
     },
     enabled: !!user,
     staleTime: 1000 * 60 * 5,

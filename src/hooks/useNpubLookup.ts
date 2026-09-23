@@ -110,7 +110,10 @@ export function useNpubLookup(pubkeyHex: string | null) {
 
       if (!events.length) return null;
 
-      const event = events[0];
+      // Use the newest relay list by created_at (replaceable event)
+      const event = events.reduce((latest, ev) =>
+        ev.created_at > latest.created_at ? ev : latest
+      );
 
       // Parse r tags: ["r", "wss://...", optional "read" | "write"]
       const relays: UserRelay[] = [];

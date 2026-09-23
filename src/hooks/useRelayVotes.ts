@@ -24,16 +24,33 @@ interface NostrVote {
 }
 
 // ─── Parse helpers ────────────────────────────────────────────────────────────
+
+/**
+ * NIP-25 reaction content → vote direction.
+ * `'-'` → downvote; `''` / `'+'` / emoji → upvote; anything else → null (skip).
+ */
+function reactionDirection(content: string): boolean | null {
+  const c = content.trim();
+  if (c === '-') return false;
+  if (c === '' || c === '+') return true;
+  // Custom emoji (e.g. "🔥" or ":custom:") counts as an upvote per NIP-25
+  if (/\p{Extended_Pictographic}/u.test(c) || c.startsWith(':')) return true;
+  return null;
+}
+
 function parseReactionVote(ev: NostrEvent, relayUrl: string): NostrVote | null {
   // Must reference the relay URL via an `r` tag
   const rTag = ev.tags.find(([t]) => t === 'r')?.[1];
   if (rTag !== relayUrl) return null;
 
+  const direction = reactionDirection(ev.content);
+  if (direction === null) return null;
+
   return {
     eventId: ev.id,
     voterPubkey: ev.pubkey,
     relayUrl,
-    isUpvote: ev.content !== '-',
+    isUpvote: direction,
     createdAt: ev.created_at,
   };
 }
@@ -99,7 +116,30 @@ export function useRelayVotes(relayUrl: string, voterPubkey?: string) {
         }
       }
 
-      return { reactions, proposals };
+      // kind:7 reactions and kind:6683 proposals are non-replaceable, so a
+      // voter could otherwise vote unlimited times. Keep only the LATEST
+      // event per voter (per voter+tag for proposals) before weighting.
+      const latestReactionByVoter = new Map<string, NostrVote>();
+      for (const vote of reactions) {
+        const existing = latestReactionByVoter.get(vote.voterPubkey);
+        if (!existing || vote.createdAt > existing.createdAt) {
+          latestReactionByVoter.set(vote.voterPubkey, vote);
+        }
+      }
+
+      const latestProposalByVoterTag = new Map<string, NostrVote>();
+      for (const vote of proposals) {
+        const key = `${vote.voterPubkey}:${vote.tag ?? ''}`;
+        const existing = latestProposalByVoterTag.get(key);
+        if (!existing || vote.createdAt > existing.createdAt) {
+          latestProposalByVoterTag.set(key, vote);
+        }
+      }
+
+      return {
+        reactions: [...latestReactionByVoter.values()],
+        proposals: [...latestProposalByVoterTag.values()],
+      };
     },
     staleTime: 1000 * 60 * 2, // 2 minutes
     gcTime: 1000 * 60 * 15,
@@ -162,23 +202,27 @@ export function useRelayVotes(relayUrl: string, voterPubkey?: string) {
   );
 
   // ── Check if current user has voted ─────────────────────────────────────
+  // Fall back to the logged-in user's pubkey so repeat-vote gating works even
+  // when the caller doesn't pass voterPubkey explicitly.
+  const effectiveVoter = voterPubkey ?? user?.pubkey;
+
   const hasVoted = useCallback(
     (tag: VoteTag) => {
-      if (!voterPubkey || !nostrVotes?.proposals) return false;
+      if (!effectiveVoter || !nostrVotes?.proposals) return false;
       const tagKebab = tag.toLowerCase().replace(/\s+/g, '-');
       return nostrVotes.proposals.some(
-        (v) => v.voterPubkey === voterPubkey &&
+        (v) => v.voterPubkey === effectiveVoter &&
           (v.tag?.toLowerCase().replace(/\s+/g, '-') === tagKebab ||
            v.tag?.toLowerCase() === tag.toLowerCase())
       );
     },
-    [nostrVotes?.proposals, voterPubkey]
+    [nostrVotes?.proposals, effectiveVoter]
   );
 
   const hasUpvoted = useMemo(() => {
-    if (!voterPubkey || !nostrVotes?.reactions) return false;
-    return nostrVotes.reactions.some((v) => v.voterPubkey === voterPubkey && v.isUpvote);
-  }, [nostrVotes?.reactions, voterPubkey]);
+    if (!effectiveVoter || !nostrVotes?.reactions) return false;
+    return nostrVotes.reactions.some((v) => v.voterPubkey === effectiveVoter && v.isUpvote);
+  }, [nostrVotes?.reactions, effectiveVoter]);
 
   // ── Publish vote mutations ──────────────────────────────────────────────
   const { mutate: publishUpvote, isPending: upvoting } = useMutation({
@@ -236,17 +280,21 @@ export function useRelayVotes(relayUrl: string, voterPubkey?: string) {
   const castVote = useCallback(
     (tag: VoteTag) => {
       if (!user) return;
+      // One vote per voter per tag — ignore repeat attempts
+      if (hasVoted(tag)) return;
       publishTagVote(tag);
       setJustVoted(tag);
       setTimeout(() => setJustVoted(null), 2500);
     },
-    [user, publishTagVote]
+    [user, publishTagVote, hasVoted]
   );
 
   const castUpvote = useCallback(() => {
     if (!user) return;
+    // One upvote per voter — ignore repeat attempts
+    if (hasUpvoted) return;
     publishUpvote();
-  }, [user, publishUpvote]);
+  }, [user, publishUpvote, hasUpvoted]);
 
   // Note: "removing" a vote isn't possible with Nostr events (they're immutable)
   // Instead, we just don't show the option to vote again
@@ -256,14 +304,15 @@ export function useRelayVotes(relayUrl: string, voterPubkey?: string) {
   }, []);
 
   return {
-    myVotes: nostrVotes?.proposals.filter((v) => v.voterPubkey === voterPubkey) ?? [],
+    myVotes: nostrVotes?.proposals.filter((v) => v.voterPubkey === effectiveVoter) ?? [],
     hasVoted,
     hasUpvoted,
     castVote,
     castUpvote,
     removeVote,
     justVoted,
-    relayVoteCount: nostrVotes?.reactions.length ?? 0,
+    // Deduped upvotes only (downvotes and repeat votes excluded)
+    relayVoteCount: nostrVotes?.reactions.filter((v) => v.isUpvote).length ?? 0,
     upvoteScore,
     computeAggregated,
     votesLoading,
