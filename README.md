@@ -12,6 +12,18 @@ Find, compare, and evaluate Nostr relays by uptime, latency, NIP support, pricin
 
 ## Features
 
+### Crawler Snapshot (GitHub Auto-Tick)
+A scheduled GitHub Actions crawler (`.github/workflows/crawl.yml`, every 3 hours) makes the directory persistent and instant — the same auto-tick pattern as Opengrantindex:
+
+- **Whole-network NIP-66 harvest** — pulls every kind:30166 observation from all monitors on the meta-relays (`relay.nostr.watch`, `relaypag.es`, `monitorlizard.nostr1.com`), ~1,200 relays from ~20 monitors per run
+- **Direct probes** — relays the monitors lost sight of get probed directly (WebSocket open RTT + NIP-11 HTTP fetch), so the graveyard only lists verified deaths
+- **Persistent per-relay history** — every run appends an observation point; 30-day uptime, sparklines, first-seen dates, and NIP/NIP-11 change logs are all computed from real committed history
+- **Committed snapshot** — `src/lib/snapshot/generated.{json,ts}`, `stats-history.json`, `crawl-report.json` are rewritten and committed every run; the app bundles the snapshot so the directory renders instantly with real data
+- **Our own monitor** — with `RELAYMON_NSEC` set (hex secret in repo secrets), the crawler publishes signed kind:30166 observations back to the meta-relays (NIP-66), making 0xRelayFinder a first-class monitor
+- **Network Pulse page** (`/pulse`) — persistent network trends (online vs tracked, median latency, new discoveries per crawl) plus the latest crawl report
+- **Graveyard with real deaths** — relays offline for 14+ days move to a persistent graveyard list that feeds `/graveyard`
+
+
 ### Relay Directory
 - **29+ seed relays** with detailed NIP-11 info, plus community-submitted relays
 - **Automatic relay discovery** — consumes kind:30166 from ALL monitors on the NIP-66 meta-relays (`relay.nostr.watch`, `relaypag.es`, `monitorlizard.nostr1.com`). Every relay the monitor network has health-checked is auto-imported with its real NIP-11 doc, RTT, geohash, and NIP support — no manual submission needed
@@ -198,6 +210,7 @@ On every relay's NIPs tab, find compatible apps for the event kinds that relay s
 | `/atlas` | Interactive world map of all geolocated relays |
 | `/sets` | NIP-51 relay set collections — create & browse |
 | `/protocols` | Protocol coverage — all supported NIPs |
+| `/pulse` | Network Pulse — persistent network trends & crawl reports |
 | `/explore` | Curated relay explorations |
 | `/build` | Guided relay set builder |
 | `/compare` | Side-by-side relay comparison |
@@ -211,6 +224,21 @@ On every relay's NIPs tab, find compatible apps for the event kinds that relay s
 | `/about` | About relays and the project |
 
 ---
+
+## The Crawler (auto-tick)
+
+```bash
+# Run the crawler locally (writes src/lib/snapshot/*)
+npm run crawl
+
+# Dry run — crawl and print a summary, write nothing
+npm run crawl -- --dry-run
+
+# Crawl + publish our own kind:30166 observations (needs RELAYMON_NSEC)
+RELAYMON_NSEC=<hex> npm run crawl -- --publish
+```
+
+The crawler shares its NIP-66 parsing with the frontend (`src/lib/nip66.ts`) — one implementation, two runtimes. Snapshot schema lives in `src/lib/snapshot/types.ts`.
 
 ## Tech Stack
 
@@ -375,9 +403,12 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for development setup, code conventions
 - ~~Relay collections~~ → NIP-51 sets at `/sets`
 - ~~Relay reviews~~ → NIP-22 threaded comments
 
+**Completed (cont.):**
+- ~~Own NIP-66 monitor~~ → crawler publishes signed kind:30166 (set `RELAYMON_NSEC`)
+- ~~Relay changelog~~ → crawler tracks NIP/NIP-11 diffs per relay in the snapshot
+- ~~Directory persistence~~ → GitHub auto-tick snapshot (every 3h, committed to repo)
+
 **Upcoming:**
-- Own NIP-66 monitor (self-sovereign liveness data)
-- Relay changelog (NIP-11 diff tracking over time)
 - Embeddable relay status widget
 - Multi-relay replication verification (NIP-77-based)
 - Directory backup & export
