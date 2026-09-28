@@ -2,13 +2,14 @@
  * Relay Data — Monitor-Sourced Directory
  *
  * Sources of truth (no synthetic data):
- * 1. NIP-66 monitors (kind:30166) — every relay any monitor has recently seen
- * 2. Community submissions (kind:30078) — submitted & approved via our app
+ * 1. NIP-66 monitors (kind:30166) — every relay ANY monitor on the network
+ *    has seen alive within the freshness window. Queries all monitors, not
+ *    just our trusted set — maximally robust against single-monitor gaps.
+ * 2. Community submissions (kind:30078) — submitted & approved via our app.
  *
  * The directory is empty at startup. Relays appear as monitors find them.
- * Relays disappear from the live view when monitors haven't seen them for
- * 6 hours. Persistence comes from community submissions, which are stored
- * as signed events on Nostr.
+ * Relays drop from the live view when no monitor has seen them for 24h.
+ * Persistence comes from community submissions (signed events on Nostr).
  *
  * Infrastructure relays (admin, moderation) live in src/lib/constants.ts
  * under APP_RELAY_URLS — they are the plumbing, not the directory.
@@ -17,15 +18,20 @@
 import { useMemo, useState, useEffect } from 'react';
 import type { RelayRecord } from '@/types/relay';
 import { useRelayDirectory } from '@/hooks/useRelayDirectory';
-import { useNIP66MultiMonitor } from '@/hooks/useNIP66Monitor';
+import { useNIP66DiscoveryFeed } from '@/hooks/useNIP66Monitor';
 import { observationToRecord } from '@/data/relays';
 
-/** How old a monitor observation can be before the relay drops from the directory */
-const FRESH_WINDOW_S = 6 * 3600; // 6 hours
+/**
+ * How old a monitor observation can be before the relay drops from the
+ * directory. 24 hours — long enough to survive a slow monitor day, short
+ * enough that genuinely dead relays fall off quickly.
+ */
+const FRESH_WINDOW_S = 24 * 3600; // 24 hours
 
 export function useRelayData() {
-  // 1. Live monitor observations — the primary directory source
-  const { data: multiMap, isLoading: monitorLoading } = useNIP66MultiMonitor();
+  // 1. Monitor observations from the ENTIRE NIP-66 network (all monitors,
+  //    3-day query window, deduped per relay). Primary source of truth.
+  const { data: discoveryFeed, isLoading: monitorLoading } = useNIP66DiscoveryFeed(2000);
 
   // 2. Community-submitted relays (kind:30078) — secondary source
   const { data: nostrRelays, isLoading: nostrLoading } = useRelayDirectory();
@@ -34,15 +40,20 @@ export function useRelayData() {
     const nowS = Math.floor(Date.now() / 1000);
     const relayMap = new Map<string, RelayRecord>();
 
-    // Phase 1: Ingest monitor observations
-    if (multiMap) {
-      for (const [relayUrl, monitorMap] of multiMap) {
-        // Only fresh observations
+    // Phase 1: Ingest monitor observations from the discovery feed.
+    //    The feed contains ALL monitors (no author filter) — one entry per
+    //    relay with the latest observation per monitor.
+    if (discoveryFeed) {
+      for (const [relayUrl, monitorMap] of discoveryFeed) {
+        // Take the most recent observation across ALL monitors for this relay
         const latest = Array.from(monitorMap.values())
-          .filter((e) => nowS - e.checkedAt <= FRESH_WINDOW_S)
           .sort((a, b) => b.checkedAt - a.checkedAt)[0];
 
         if (!latest) continue;
+
+        // Skip relays that haven't been seen within the freshness window
+        const age = nowS - latest.checkedAt;
+        if (age > FRESH_WINDOW_S) continue;
 
         const rtt = latest.rttOpen;
         const record = observationToRecord(
@@ -71,7 +82,8 @@ export function useRelayData() {
       }
     }
 
-    // Phase 2: Merge community-submitted relays (overwrite monitors for these)
+    // Phase 2: Merge community-submitted relays (they win on URL conflict
+    //    because they carry richer metadata: pricing, reviews, etc.)
     if (nostrRelays) {
       for (const relay of nostrRelays) {
         relayMap.set(relay.url, relay);
@@ -79,11 +91,17 @@ export function useRelayData() {
     }
 
     return Array.from(relayMap.values());
-  }, [multiMap, nostrRelays]);
+  }, [discoveryFeed, nostrRelays]);
 
   const loading = monitorLoading || nostrLoading;
+  const monitorCount = discoveryFeed?.size ?? 0;
 
-  return { relays, loading, discoveredCount: 0, discoverableTotal: multiMap?.size ?? 0 };
+  return {
+    relays,
+    loading,
+    monitorCount,
+    hasMonitorFeed: !!discoveryFeed && discoveryFeed.size > 0,
+  };
 }
 
 /**

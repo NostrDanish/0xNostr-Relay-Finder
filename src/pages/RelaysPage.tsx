@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useSeoMeta } from "@unhead/react";
 import { useSearchParams } from "react-router-dom";
-import { Grid3X3, List, Search, SlidersHorizontal, X, Download, FileJson, Radar } from "lucide-react";
+import { Grid3X3, List, Search, SlidersHorizontal, X, Download, FileJson, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -99,19 +99,24 @@ export function RelaysPage() {
 
   return (
     <div className="container mx-auto max-w-7xl px-4 py-8">
-      {/* Page Header */}
+{/* Page Header */}
       <div className="mb-6">
         <h1 className="text-3xl font-black mb-1">
           Relay Explorer
         </h1>
         <p className="text-muted-foreground text-sm">
-          Discover and compare Nostr relays. Find the perfect relay for your needs.
+          Discover and compare Nostr relays. All data is sourced live from the NIP-66 monitor network and community submissions.
         </p>
-        {discoveredCount > 0 && (
-          <p className="text-xs text-cyan-500 mt-1.5 flex items-center gap-1.5">
-            <Radar className="w-3 h-3" />
-            {discoveredCount} relays auto-discovered from the NIP-66 monitor network
-            {discoverableTotal > discoveredCount && ` (${discoverableTotal} total observed)`}
+        {loading && (
+          <p className="text-xs text-violet-500 mt-1.5 flex items-center gap-1.5">
+            <Activity className="w-3 h-3 animate-pulse" />
+            Contacting NIP-66 monitors…
+          </p>
+        )}
+        {!loading && relays.length === 0 && (
+          <p className="text-xs text-yellow-500 mt-1.5 flex items-center gap-1.5">
+            <Activity className="w-3 h-3" />
+            No monitor data yet — waiting for kind:30166 events from the network
           </p>
         )}
       </div>
@@ -279,13 +284,21 @@ export function RelaysPage() {
                 <Search className="w-8 h-8 text-muted-foreground" />
               </div>
               <h3 className="font-bold text-lg mb-2">No relays found</h3>
-              <p className="text-muted-foreground text-sm max-w-sm">
-                Try adjusting your search or filters. Clear filters to see all relays.
+              <p className="text-muted-foreground text-sm max-w-sm mb-4">
+                {relays.length === 0
+                  ? "The NIP-66 monitor network is being contacted — relays will appear here as monitors publish health checks. This can take up to 30 seconds on first load."
+                  : "Try adjusting your search or filters. Clear filters to see all relays."}
               </p>
+              {relays.length === 0 && (
+                <p className="text-xs text-muted-foreground/70 mb-4">
+                  The directory is empty at startup — it populates live from monitor kind:30166 events.
+                  No baked-in relays. All data is real.
+                </p>
+              )}
               <Button
                 variant="outline"
                 size="sm"
-                className="mt-4"
+                className="mt-2"
                 onClick={() => {
                   setSearch("");
                   setFilters(DEFAULT_FILTERS);
