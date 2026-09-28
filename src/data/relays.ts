@@ -25,24 +25,24 @@ import type { RelayRecord, UseCaseTag, NIP66Data } from '@/types/relay';
 // CONSTANTS – UI helpers, not relay data
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/** Predefined use-case options for the quiz flow, filters, and submission form. */
-export const USE_CASE_OPTIONS: { value: UseCaseTag; label: string; description: string }[] = [
-  { value: 'General', label: 'General', description: 'Everyday Nostr usage' },
-  { value: 'DMs', label: 'Direct Messages', description: 'NIP-17 private DMs' },
-  { value: 'Zaps', label: 'Zaps', description: 'Lightning payments' },
-  { value: 'Blossom', label: 'Blossom', description: 'Media storage' },
-  { value: 'Images', label: 'Images', description: 'Image hosting' },
-  { value: 'Video', label: 'Video', description: 'Video content' },
-  { value: 'Long Form', label: 'Long Form', description: 'Articles & blogs' },
-  { value: 'Communities', label: 'Communities', description: 'Groups & moderation' },
-  { value: 'Marketplace', label: 'Marketplace', description: 'Commerce' },
-  { value: 'Paid Access', label: 'Paid Access', description: 'Premium relays' },
-  { value: 'High Performance', label: 'High Performance', description: 'Fast & searchable' },
-  { value: 'Privacy', label: 'Privacy', description: 'Auth & restricted' },
-  { value: 'Censorship Resistant', label: 'Censorship Resistant', description: 'Free speech' },
-  { value: 'Archive', label: 'Archive', description: 'Long-term storage' },
-  { value: 'Inbox', label: 'Inbox', description: 'Personal relay' },
-  { value: 'Gaming', label: 'Gaming', description: 'Real-time' },
+/** All valid use-case tags for filtering/submission (plain strings — used as UseCaseTag directly). */
+export const USE_CASE_OPTIONS: UseCaseTag[] = [
+  'General',
+  'DMs',
+  'Zaps',
+  'Blossom',
+  'Images',
+  'Video',
+  'Long Form',
+  'Communities',
+  'Marketplace',
+  'Paid Access',
+  'High Performance',
+  'Privacy',
+  'Censorship Resistant',
+  'Archive',
+  'Inbox',
+  'Gaming',
 ];
 
 /** Country codes for filter dropdowns. */
