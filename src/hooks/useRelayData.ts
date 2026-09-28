@@ -1,15 +1,13 @@
 /**
- * Relay Data — Monitor-Sourced Directory
+ * Relay Data — Monitor-Sourced Directory + Crawler Snapshot floor
  *
  * Sources of truth (no synthetic data):
- * 1. NIP-66 monitors (kind:30166) — every relay ANY monitor on the network
- *    has seen alive within the freshness window. Queries all monitors, not
- *    just our trusted set — maximally robust against single-monitor gaps.
+ * 0. Crawler snapshot (bundled, committed by GitHub Actions every 3h) —
+ *    instant first paint, real 30d uptime/sparklines from persistent
+ *    observation history, resilient against monitor-feed gaps.
+ * 1. NIP-66 monitors (kind:30166, live query) — freshest liveness; overrides
+ *    the snapshot when it has newer data.
  * 2. Community submissions (kind:30078) — submitted & approved via our app.
- *
- * The directory is empty at startup. Relays appear as monitors find them.
- * Relays drop from the live view when no monitor has seen them for 24h.
- * Persistence comes from community submissions (signed events on Nostr).
  *
  * Infrastructure relays (admin, moderation) live in src/lib/constants.ts
  * under APP_RELAY_URLS — they are the plumbing, not the directory.
@@ -19,7 +17,9 @@ import { useMemo, useState, useEffect } from 'react';
 import type { RelayRecord } from '@/types/relay';
 import { useRelayDirectory } from '@/hooks/useRelayDirectory';
 import { useNIP66DiscoveryFeed } from '@/hooks/useNIP66Monitor';
+import { useSnapshot } from '@/hooks/useSnapshot';
 import { observationToRecord } from '@/data/relays';
+import { normalizeRelayUrl } from '@/lib/relayUrl';
 
 /**
  * How old a monitor observation can be before the relay drops from the
@@ -28,7 +28,17 @@ import { observationToRecord } from '@/data/relays';
  */
 const FRESH_WINDOW_S = 24 * 3600; // 24 hours
 
+/**
+ * Snapshot relays older than this stay out of the live directory (they're
+ * headed to the graveyard). 7 days — much more resilient than the live-only
+ * window, because the snapshot has persistent history to back the listing.
+ */
+const SNAPSHOT_WINDOW_S = 7 * 24 * 3600;
+
 export function useRelayData() {
+  // 0. Crawler snapshot — bundled, synchronous, always available
+  const snapshot = useSnapshot();
+
   // 1. Monitor observations from the ENTIRE NIP-66 network (all monitors,
   //    3-day query window, deduped per relay). Primary source of truth.
   const { data: discoveryFeed, isLoading: monitorLoading } = useNIP66DiscoveryFeed(2000);
@@ -40,9 +50,22 @@ export function useRelayData() {
     const nowS = Math.floor(Date.now() / 1000);
     const relayMap = new Map<string, RelayRecord>();
 
+    // Phase 0: Lay down the crawler snapshot as the floor. Every relay the
+    //    crawler has seen online within the last 7 days appears immediately
+    //    with real historical uptime and sparklines.
+    for (const record of snapshot.records) {
+      const lastSeenS = record.nip66?.lastMonitorEvent
+        ? nowS - Math.floor(record.nip66.lastMonitorEvent / 1000)
+        : nowS - Math.floor(record.lastChecked / 1000);
+      if (lastSeenS > SNAPSHOT_WINDOW_S) continue;
+      relayMap.set(normalizeRelayUrl(record.url) ?? record.url, record);
+    }
+
     // Phase 1: Ingest monitor observations from the discovery feed.
     //    The feed contains ALL monitors (no author filter) — one entry per
-    //    relay with the latest observation per monitor.
+    //    relay with the latest observation per monitor. Fresher than the
+    //    snapshot, so it wins on conflict; snapshot history (uptime,
+    //    sparklines, first-seen) is carried over.
     if (discoveryFeed) {
       for (const [relayUrl, monitorMap] of discoveryFeed) {
         // Take the most recent observation across ALL monitors for this relay
@@ -56,6 +79,8 @@ export function useRelayData() {
         if (age > FRESH_WINDOW_S) continue;
 
         const rtt = latest.rttOpen;
+        const key = normalizeRelayUrl(relayUrl) ?? relayUrl;
+        const prior = relayMap.get(key);
         const record = observationToRecord(
           relayUrl,
           {
@@ -76,9 +101,22 @@ export function useRelayData() {
           },
           latest.nip11,
           rtt,
-          Date.now(),
+          prior?.addedAt ?? Date.now(),
         );
-        relayMap.set(relayUrl, record);
+
+        // Carry over persistent history from the snapshot
+        if (prior) {
+          record.uptimeSpark = prior.uptimeSpark;
+          record.uptimePercent30d = prior.uptimePercent30d;
+          if (!record.avgLatencyMs) record.avgLatencyMs = prior.avgLatencyMs;
+          if (prior.nip66?.lastMonitorEvent && record.nip66) {
+            record.nip66.lastMonitorEvent = Math.max(
+              record.nip66.lastMonitorEvent ?? 0,
+              prior.nip66.lastMonitorEvent,
+            );
+          }
+        }
+        relayMap.set(key, record);
       }
     }
 
@@ -86,12 +124,12 @@ export function useRelayData() {
     //    because they carry richer metadata: pricing, reviews, etc.)
     if (nostrRelays) {
       for (const relay of nostrRelays) {
-        relayMap.set(relay.url, relay);
+        relayMap.set(normalizeRelayUrl(relay.url) ?? relay.url, relay);
       }
     }
 
     return Array.from(relayMap.values());
-  }, [discoveryFeed, nostrRelays]);
+  }, [snapshot, discoveryFeed, nostrRelays]);
 
   const loading = monitorLoading || nostrLoading;
   const monitorCount = discoveryFeed?.size ?? 0;
@@ -101,6 +139,7 @@ export function useRelayData() {
     loading,
     monitorCount,
     hasMonitorFeed: !!discoveryFeed && discoveryFeed.size > 0,
+    snapshotGeneratedAt: snapshot.generatedAt,
   };
 }
 
@@ -112,9 +151,10 @@ export function useRelayById(urlEncoded: string) {
   const [notFound, setNotFound] = useState(false);
 
   const relay = useMemo(() => {
-    if (loading) return null;
+    if (loading && !relays.length) return null;
     const url = decodeURIComponent(urlEncoded);
-    return relays.find((r) => r.url === url) ?? null;
+    const normalized = normalizeRelayUrl(url) ?? url;
+    return relays.find((r) => (normalizeRelayUrl(r.url) ?? r.url) === normalized) ?? null;
   }, [relays, loading, urlEncoded]);
 
   useEffect(() => {
