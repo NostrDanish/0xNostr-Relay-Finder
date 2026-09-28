@@ -15,19 +15,16 @@ import {
   Sparkles, MessageCircle, Image, Lock, Zap, Globe2,
   ArrowRight, ArrowLeft, CheckCircle2, Radio, Crown,
   Wifi, TrendingUp, RefreshCw, DollarSign, Shield,
-  Award, Gauge,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
 import { useLiveRelayStore, type LiveRelayRecord } from '@/hooks/useLiveRelayStore';
 import { useMonitorConsensus } from '@/hooks/useMonitorConsensus';
 import {
   useNetworkBenchmarks,
   getSpeedGroup,
   SPEED_GROUP_META,
-  type NetworkBenchmarks,
   type SpeedGroup,
 } from '@/hooks/useMonitorConsensus';
 import { AddToRelayListButton } from '@/components/relay/AddToRelayListButton';
@@ -127,6 +124,11 @@ function RecommendationCard({ relay, reason, rank, speedGroup, rttMs, consensusO
               {speedGroup && (
                 <Badge variant="outline" className="text-xs gap-1">
                   {SPEED_GROUP_META[speedGroup].emoji} {SPEED_GROUP_META[speedGroup].label}
+                </Badge>
+              )}
+              {rttMs != null && (
+                <Badge variant="outline" className="text-xs gap-1">
+                  {rttMs}ms
                 </Badge>
               )}
               {consensusOnline && (
@@ -260,15 +262,13 @@ export function RecommenderPage() {
 
       const reason = reasons.length > 0 ? reasons.join(' · ') : 'Solid relay';
 
-      return { relay, score, reason, speedGroup: sg, rttMs, consensusOnline: cons?.online ?? false };
-
-      return { relay, score, reason };
+      return { relay, score, reason, speedGroup: sg ?? null, rttMs: rttMs ?? null, consensusOnline: cons?.online ?? false };
     });
 
     return scored
       .sort((a, b) => b.score - a.score)
       .slice(0, 5);
-  }, [relays, answers, step]);
+  }, [relays, answers, step, benchmarks, consensusMap]);
 
   const steps = [
     { title: 'What do you use Nostr for?', subtitle: 'Select your primary use case' },

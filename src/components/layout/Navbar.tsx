@@ -27,6 +27,7 @@ const NAV_LINKS = [
   { href: "/explore", label: "Explore" },
   { href: "/relays", label: "Directory" },
   { href: "/watch", label: "Live Watch" },
+  { href: "/pulse", label: "Pulse" },
   { href: "/sets", label: "Sets" },
   { href: "/build", label: "Build Set" },
   { href: "/compare", label: "Compare" },
