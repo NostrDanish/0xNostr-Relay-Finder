@@ -78,7 +78,8 @@ export function useRelayData() {
         const age = nowS - latest.checkedAt;
         if (age > FRESH_WINDOW_S) continue;
 
-const rtt = latest.rttOpen;
+        const key = normalizeRelayUrl(relayUrl) ?? relayUrl;
+        const rtt = latest.rttOpen;
         const nips = latest.supportedNips ?? [];
         const record = observationToRecord(
           relayUrl,
@@ -103,11 +104,12 @@ const rtt = latest.rttOpen;
           Date.now(),
         );
 
-        // Carry over persistent history from the snapshot
+        // Carry over persistent history from the snapshot floor
+        const prior = relayMap.get(key);
         if (prior) {
           record.uptimeSpark = prior.uptimeSpark;
           record.uptimePercent30d = prior.uptimePercent30d;
-          if (!record.avgLatencyMs) record.avgLatencyMs = prior.avgLatencyMs;
+          if (!record.avgLatencyMs && prior.avgLatencyMs) record.avgLatencyMs = prior.avgLatencyMs;
           if (prior.nip66?.lastMonitorEvent && record.nip66) {
             record.nip66.lastMonitorEvent = Math.max(
               record.nip66.lastMonitorEvent ?? 0,
