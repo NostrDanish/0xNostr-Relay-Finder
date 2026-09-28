@@ -162,7 +162,7 @@ function enrichWithNIP11(
  * with live status information.
  */
 export function useLiveRelayStore() {
-  const { relays: baseRelays, loading: baseLoading, discoveredCount, discoverableTotal } = useRelayData();
+  const { relays: baseRelays, loading: baseLoading } = useRelayData();
 
   // Get relay URLs for NIP-11 batch fetching
   const relayUrls = useMemo(
@@ -297,13 +297,9 @@ export function useLiveRelayStore() {
     loading,
     /** Whether enrichment data (NIP-66, NIP-11) is still loading */
     enriching,
-    /** NIP-11 cache map (for per-relay freshness info) */
+/** NIP-11 cache map (for per-relay freshness info) */
     nip11Cache: nip11Cache ?? (new Map() as NIP11CacheMap),
-    /** NIP-66 monitor map (for per-relay monitor data), keyed by canonical URL */
-    monitorMap: normalizedMonitorMap ?? new Map(),
-    /** Number of relays auto-discovered from the NIP-66 monitor network */
-    discoveredCount: discoveredCount ?? 0,
-    /** Total relays observed by monitors (before directory cap) */
-    discoverableTotal: discoverableTotal ?? 0,
+    /** NIP-66 monitor map (for per-relay monitor data) */
+    monitorMap: monitorMap ?? new Map(),
   };
 }

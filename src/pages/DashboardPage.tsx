@@ -30,16 +30,15 @@ import {
   useApproveSubmission, useUpdateRoleList,
   type Submission, type SubmissionStatus,
 } from '@/hooks/useSubmissions';
-import { RELAY_SEED_DATA, STATS } from '@/data/relays';
+import { useRelayCrawler, type DiscoveredRelay } from '@/hooks/useRelayCrawler';
+import { useLiveRelayStore } from '@/hooks/useLiveRelayStore';
+import { nip19 } from 'nostr-tools';
+import { genUserName } from '@/lib/genUserName';
+import { timeAgo, shortenUrl } from '@/lib/utils';
 import {
   OWNER_PUBKEY_HEX, ADMIN_ROLES_D_TAG, MOD_ROLES_D_TAG,
   APP_RELAY_URL, APP_RELAY_URLS, APP_NPUB,
 } from '@/lib/constants';
-import { nip19 } from 'nostr-tools';
-import { genUserName } from '@/lib/genUserName';
-import { timeAgo, shortenUrl } from '@/lib/utils';
-import { useRelayCrawler, type DiscoveredRelay } from '@/hooks/useRelayCrawler';
-import { useLiveRelayStore } from '@/hooks/useLiveRelayStore';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function RoleBadge({ role }: { role: string }) {
@@ -478,17 +477,13 @@ export function DashboardPage() {
   const [decisionTarget, setDecisionTarget] = useState<{ sub: Submission; decision: 'approved' | 'rejected' } | null>(null);
 
   // Background relay crawler: passively discovers new relay URLs from
-  // kind:10002 / kind:3 / kind:30166 events, excluding relays we already
-  // know (seed + approved submissions). Results populate the shared
-  // 'relay-crawler' query cache consumed by the directory. (Must run
-  // unconditionally, before the auth-gate early returns below.)
+  // Relay crawler — discovers new relays from kind:10002 / kind:3 / kind:30166
+  // events, excluding relays we already know (approved submissions + monitor-observed).
+  // Results populate the shared 'relay-crawler' query cache consumed by the directory.
   const knownRelayUrls = useMemo(
-    () => [
-      ...RELAY_SEED_DATA.map((r) => r.url),
-      ...(allSubmissions ?? [])
-        .filter((s) => s.status === 'approved')
-        .map((s) => s.url),
-    ],
+    () => (allSubmissions ?? [])
+      .filter((s) => s.status === 'approved')
+      .map((s) => s.url),
     [allSubmissions],
   );
   useRelayCrawler(knownRelayUrls);
@@ -608,7 +603,7 @@ export function DashboardPage() {
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
           {[
-            { label: 'Seed Relays', value: RELAY_SEED_DATA.length, icon: Radio, color: 'text-primary' },
+            { label: 'Monitored Relays', value: stats.total, icon: Radio, color: 'text-primary' },
             { label: 'Total Submitted', value: stats.total, icon: Inbox, color: 'text-blue-500' },
             { label: 'Pending', value: stats.pending, icon: Clock, color: 'text-yellow-500' },
             { label: 'Approved', value: stats.approved, icon: CheckCircle2, color: 'text-emerald-500' },
@@ -907,14 +902,11 @@ export function DashboardPage() {
                     Directory Overview
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-3">
-                  {[
-                    { label: 'Seed relays (hardcoded)', value: RELAY_SEED_DATA.length },
+                <CardContent className="space-y-3">                    
+                  {[                    
                     { label: 'Submitted relays (live)', value: stats.total },
-                    { label: 'Approved & live', value: stats.approved + RELAY_SEED_DATA.length },
-                    { label: 'Pending review', value: stats.pending },
-                    { label: 'Seed with NIP-66', value: STATS.nip66Enriched },
-                    { label: 'Seed Blossom relays', value: STATS.blossomEnabled },
+                    { label: 'Approved & live', value: stats.approved },
+                    { label: 'Pending review', value: stats.pending },                    
                     { label: 'Admins', value: adminList.length },
                     { label: 'Moderators', value: modList.length },
                   ].map(({ label, value }) => (

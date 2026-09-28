@@ -12,7 +12,6 @@ import {
 import { normalizeRelayUrl, relayHttpUrl } from '@/lib/relayUrl';
 import { useAdminAccess } from '@/hooks/useAdminAccess';
 import { buildApprovalMap, approvalStatusFor } from '@/hooks/useSubmissions';
-import { RELAY_SEED_DATA } from '@/data/relays';
 
 interface SubmissionPayload {
   url?: string;
@@ -240,10 +239,15 @@ export function useRelayDirectory() {
 
         // Parse valid events into relay records, applying approval overrides
         const submittedRecords: RelayRecord[] = [];
-        // Normalize seed URLs too so dedup matches canonical submission URLs
-        const seenUrls = new Set(
-          RELAY_SEED_DATA.map((r) => normalizeRelayUrl(r.url) ?? r.url)
-        );
+        // Build set of already-approved URLs (from full consensus)
+        // to prevent duplicates within the submission stream itself
+        const seenUrls = new Set<string>();
+        for (const ev of latestByDTag.values()) {
+          const dTag = ev.tags.find(([t]) => t === 'd')?.[1];
+          if (!dTag) continue;
+          const overrideStatus = approvalStatusFor(approvalStatusMap, { eventId: ev.id, address: dTag, pubkey: ev.pubkey });
+          if (overrideStatus === 'approved') seenUrls.add(dTag);
+        }
 
         for (const ev of latestByDTag.values()) {
           const record = parseSubmissionEvent(ev);
