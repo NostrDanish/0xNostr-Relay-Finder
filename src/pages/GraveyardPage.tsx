@@ -2,27 +2,74 @@
  * GraveyardPage — Relay Graveyard
  *
  * Shows relays that were once in the directory but are now permanently offline.
- * Data source: seed relays + approved submissions that are currently offline
- * and have no recent NIP-66 monitor events.
+ * Data sources: live store relays with dead consensus + the crawler snapshot
+ * graveyard (persistent, verified death records from the auto-tick crawler).
  */
 
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useSeoMeta } from '@unhead/react';
 import {
-  Skull, Clock, Calendar, ArrowUpDown, Search,
+  Skull, Clock, Calendar, Search,
   Radio, ExternalLink, Copy, Check, WifiOff,
   TrendingDown, AlertTriangle,
 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { useMonitorConsensus, type LivenessState } from '@/hooks/useMonitorConsensus';
+import { useLiveRelayStore, type LiveRelayRecord } from '@/hooks/useLiveRelayStore';
+import { useSnapshot } from '@/hooks/useSnapshot';
 import { shortenUrl, relayUrlToId, timeAgo } from '@/lib/utils';
+import type { GraveyardEntry } from '@/lib/snapshot/types';
+
+/** Convert a crawler graveyard entry into a tombstone-ready record. */
+function graveyardEntryToRecord(entry: GraveyardEntry): LiveRelayRecord {
+  let host = entry.url;
+  try {
+    host = new URL(entry.url.replace(/^wss?:\/\//, 'https://')).hostname || entry.url;
+  } catch { /* keep url */ }
+  return {
+    id: entry.url,
+    url: entry.url,
+    name: (entry.name ?? entry.software ?? host).slice(0, 60),
+    description: 'Tracked by the 0xRelayFinder crawler until it went silent.',
+    nip11: {},
+    useCases: [],
+    priceTiers: [],
+    isFree: true,
+    isOnline: false,
+    uptimePercent30d: 0,
+    uptimeSpark: [],
+    lastChecked: entry.lastSeen * 1000,
+    addedAt: entry.firstSeen * 1000,
+    featured: false,
+    trustScore: 0,
+    liveOnline: false,
+    liveLastSeen: entry.lastSeen * 1000,
+  } as LiveRelayRecord;
+}
 
 type SortKey = 'recent' | 'oldest' | 'name';
+
+function sortFn(sort: SortKey) {
+  return (a: LiveRelayRecord, b: LiveRelayRecord) => {
+    switch (sort) {
+      case 'recent': {
+        return (b.liveLastSeen ?? b.lastChecked) - (a.liveLastSeen ?? a.lastChecked);
+      }
+      case 'oldest': {
+        return (a.liveLastSeen ?? a.lastChecked) - (b.liveLastSeen ?? b.lastChecked);
+      }
+      case 'name':
+        return a.name.localeCompare(b.name);
+      default:
+        return 0;
+    }
+  };
+}
 
 function isRelayDead(relay: LiveRelayRecord, liveness?: LivenessState): boolean {
   // If consensus says dead, trust it
@@ -135,6 +182,7 @@ function TombstoneCard({ relay }: { relay: LiveRelayRecord }) {
 export function GraveyardPage() {
   const { relays } = useLiveRelayStore();
   const { consensusMap } = useMonitorConsensus();
+  const { graveyard } = useSnapshot();
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<SortKey>('recent');
 
@@ -144,40 +192,32 @@ export function GraveyardPage() {
   });
 
   const deadRelays = useMemo(() => {
-    let dead = relays.filter(r => isRelayDead(r, consensusMap.get(r.url)?.liveness));
+    const dead = relays.filter(r => isRelayDead(r, consensusMap.get(r.url)?.liveness));
+
+    // Merge crawler graveyard entries (persistent death records — verified
+    // offline for 14+ days by the auto-tick crawler), skipping any URL the
+    // live store already covers.
+    const covered = new Set(dead.map((r) => r.url));
+    for (const entry of graveyard) {
+      if (!covered.has(entry.url)) {
+        dead.push(graveyardEntryToRecord(entry));
+      }
+    }
 
     // Search filter
     if (search) {
       const q = search.toLowerCase();
-      dead = dead.filter(r =>
-        r.url.toLowerCase().includes(q) ||
-        r.name.toLowerCase().includes(q) ||
-        r.description.toLowerCase().includes(q)
-      );
+      return dead
+        .filter(r =>
+          r.url.toLowerCase().includes(q) ||
+          r.name.toLowerCase().includes(q) ||
+          r.description.toLowerCase().includes(q)
+        )
+        .sort(sortFn(sort));
     }
 
-    // Sort
-    dead.sort((a, b) => {
-      switch (sort) {
-        case 'recent': {
-          const aLast = a.liveLastSeen ?? a.lastChecked;
-          const bLast = b.liveLastSeen ?? b.lastChecked;
-          return bLast - aLast; // Most recently died first
-        }
-        case 'oldest': {
-          const aLast = a.liveLastSeen ?? a.lastChecked;
-          const bLast = b.liveLastSeen ?? b.lastChecked;
-          return aLast - bLast; // Longest dead first
-        }
-        case 'name':
-          return a.name.localeCompare(b.name);
-        default:
-          return 0;
-      }
-    });
-
-    return dead;
-  }, [relays, search, sort]);
+    return dead.sort(sortFn(sort));
+  }, [relays, graveyard, search, sort, consensusMap]);
 
   return (
     <div className="container mx-auto max-w-4xl px-4 py-8">
@@ -219,7 +259,7 @@ export function GraveyardPage() {
             <div className="text-xs text-muted-foreground">Dead Rate</div>
           </CardContent>
         </Card>
-      </div>
+    </div>
 
       {/* Search & Sort */}
       <div className="flex flex-col sm:flex-row gap-3 mb-6">

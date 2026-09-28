@@ -12,13 +12,13 @@ import { RelayFilters, type RelayFiltersState, DEFAULT_FILTERS } from "@/compone
 import { NIPFilterPresets } from "@/components/relay/NIPFilterPresets";
 import { useLiveRelayStore } from "@/hooks/useLiveRelayStore";
 import { filterRelays } from "@/lib/utils";
-import { exportRelaysAsJson, exportRelaysAsCsv, exportRelaysAsList } from "@/lib/relayExport";
+import { exportRelaysAsJson, exportRelaysAsCsv } from "@/lib/relayExport";
 import { useToast } from "@/hooks/useToast";
 import type { UseCaseTag, RelayRecord } from "@/types/relay";
 
 export function RelaysPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { relays, loading, stats, discoveredCount, discoverableTotal } = useLiveRelayStore();
+  const { relays, loading, stats } = useLiveRelayStore();
   const { toast } = useToast();
   const [view, setView] = useState<"grid" | "list">("grid");
   const [search, setSearch] = useState(searchParams.get("q") ?? "");
