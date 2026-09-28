@@ -1,0 +1,60 @@
+name: Crawl NIP-66 network & refresh snapshot
+
+on:
+  # Every 3 hours, offset from the top of the hour to avoid the cron rush.
+  schedule:
+    - cron: '23 */3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: crawl
+  cancel-in-progress: false
+
+env:
+  # Optional: hex secret key of the 0xRelayFinder monitor bot. When set, the
+  # crawler publishes its own signed kind:30166 NIP-66 observations back to
+  # the meta-relays. Without it the job refreshes the snapshot only.
+  RELAYMON_NSEC: ${{ secrets.RELAYMON_NSEC }}
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      # The crawler never fails on individual source errors — those land in
+      # crawl-report.json.
+      - name: Crawl NIP-66 network (snapshot only)
+        if: env.RELAYMON_NSEC == ''
+        run: npm run crawl
+
+      - name: Crawl NIP-66 network and publish observations
+        if: env.RELAYMON_NSEC != ''
+        run: npm run crawl -- --publish
+
+      - name: Commit refreshed snapshot
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/lib/snapshot/generated.json src/lib/snapshot/generated.ts src/lib/snapshot/stats-history.json src/lib/snapshot/crawl-report.json package.json package-lock.json
+          if git diff --staged --quiet; then
+            echo "snapshot unchanged — nothing to commit"
+          else
+            git commit -m "chore(crawl): refresh relay snapshot"
+            git push
+          fi
