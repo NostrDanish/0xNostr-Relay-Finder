@@ -120,7 +120,12 @@ export function observationToRecord(
   rttMs: number | undefined,
   addedAt: number,
 ): RelayRecord {
-  const nips = nip11?.supported_nips ?? [];
+  // Defensive: wild NIP-11 docs may have supported_nips as a string,
+  // object, or other garbage. Coerce to a clean number[].
+  const rawNips = nip11?.supported_nips;
+  const nips: number[] = Array.isArray(rawNips)
+    ? rawNips.filter((n): n is number => typeof n === 'number' && Number.isInteger(n))
+    : [];
 
   let hostname = relayUrl;
   try {

@@ -78,9 +78,8 @@ export function useRelayData() {
         const age = nowS - latest.checkedAt;
         if (age > FRESH_WINDOW_S) continue;
 
-        const rtt = latest.rttOpen;
-        const key = normalizeRelayUrl(relayUrl) ?? relayUrl;
-        const prior = relayMap.get(key);
+const rtt = latest.rttOpen;
+        const nips = latest.supportedNips ?? [];
         const record = observationToRecord(
           relayUrl,
           {
@@ -93,7 +92,7 @@ export function useRelayData() {
               read: latest.checks.read ?? true,
               write: latest.checks.write ?? true,
               relay: true,
-              blossom: latest.supportedNips.includes(94) || latest.supportedNips.includes(96),
+              blossom: nips.includes(94) || nips.includes(96),
               hasNip11: !!latest.nip11,
             },
             eventsPerDay: undefined,
@@ -101,7 +100,7 @@ export function useRelayData() {
           },
           latest.nip11,
           rtt,
-          prior?.addedAt ?? Date.now(),
+          Date.now(),
         );
 
         // Carry over persistent history from the snapshot

@@ -51,6 +51,27 @@ export function tagValue(event: NostrEventLike, name: string): string | undefine
   return tagValues(event, name)[0];
 }
 
+/**
+ * Sanitize a raw NIP-11 document parsed from event content.
+ * Wild relays may return supported_nips as a string ("1,2,3"), an object,
+ * or other garbage — coerce to a clean number[] so downstream consumers
+ * can safely call .includes().
+ */
+function sanitizeNip11(raw: Record<string, unknown>): NIP11Info {
+  const doc = { ...raw } as Record<string, unknown>;
+
+  const rawNips = doc.supported_nips;
+  if (!Array.isArray(rawNips)) {
+    doc.supported_nips = [];
+  } else {
+    doc.supported_nips = rawNips.filter(
+      (n): n is number => typeof n === 'number' && Number.isInteger(n),
+    );
+  }
+
+  return doc as unknown as NIP11Info;
+}
+
 // ─── NIP-66 parsed event data ─────────────────────────────────────────────
 export interface NIP66Observation {
   /** Relay URL (from d-tag, normalized) */
@@ -257,7 +278,7 @@ export function parseNIP66Event(event: NostrEventLike): NIP66Observation | null 
       try {
         const parsed = JSON.parse(event.content);
         if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-          nip11 = parsed as NIP11Info;
+          nip11 = sanitizeNip11(parsed);
         }
       } catch {
         // Content is not JSON, that's fine
