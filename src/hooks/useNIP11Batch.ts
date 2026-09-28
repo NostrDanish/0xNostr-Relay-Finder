@@ -109,6 +109,10 @@ function stableStringify(value: unknown): string {
 /**
  * Batch-fetch NIP-11 for a list of relay URLs with rate limiting.
  * Processes 8 relays concurrently with 300ms between batches.
+ *
+ * Capped at 100 relays per cycle to prevent the NIP-11 batch fetcher
+ * from hammering the network now that we auto-discover 150+ relays
+ * from the NIP-66 meta-relays.
  */
 async function batchFetchNIP11(
   relayUrls: string[],
@@ -118,13 +122,14 @@ async function batchFetchNIP11(
   const BATCH_SIZE = 8;
   const BATCH_DELAY = 300;
   const STALE_THRESHOLD = 1000 * 60 * 5; // 5 minutes
+  const MAX_PER_CYCLE = 100; // prevent network storms from discovery inflow
 
-  // Filter to relays that need refreshing
+  // Filter to relays that need refreshing + cap
   const now = Date.now();
   const needsRefresh = relayUrls.filter((url) => {
     const cached = newCache.get(url);
     return !cached || (now - cached.fetchedAt) > STALE_THRESHOLD;
-  });
+  }).slice(0, MAX_PER_CYCLE);
 
   // Process in batches
   for (let i = 0; i < needsRefresh.length; i += BATCH_SIZE) {

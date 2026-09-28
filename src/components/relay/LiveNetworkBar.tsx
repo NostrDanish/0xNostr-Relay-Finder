@@ -13,6 +13,7 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { LiveNetworkStats } from '@/hooks/useLiveRelayStore';
 import { cn } from '@/lib/utils';
+import { Link } from 'react-router-dom';
 
 interface LiveNetworkBarProps {
   stats: LiveNetworkStats;
@@ -165,6 +166,12 @@ export function LiveNetworkBar({ stats, enriching }: LiveNetworkBarProps) {
                 {enriching ? 'Enriching…' : 'Live'}
               </span>
             </div>
+
+            {/* Monitors link */}
+            <Link to="/monitors" className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors">
+              <Activity className="w-3 h-3" />
+              <span className="hidden sm:inline">Monitors</span>
+            </Link>
           </div>
         </div>
       </div>

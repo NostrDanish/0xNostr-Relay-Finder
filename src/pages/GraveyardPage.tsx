@@ -19,22 +19,24 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
-import { useLiveRelayStore, type LiveRelayRecord } from '@/hooks/useLiveRelayStore';
+import { useMonitorConsensus, type LivenessState } from '@/hooks/useMonitorConsensus';
 import { shortenUrl, relayUrlToId, timeAgo } from '@/lib/utils';
 
 type SortKey = 'recent' | 'oldest' | 'name';
 
-function isRelayDead(relay: LiveRelayRecord): boolean {
+function isRelayDead(relay: LiveRelayRecord, liveness?: LivenessState): boolean {
+  // If consensus says dead, trust it
+  if (liveness === 'dead') return true;
+
   const isOnline = relay.liveOnline ?? relay.isOnline;
   if (isOnline) return false;
 
-  // If NIP-66 says it was seen recently, it's not dead
+  // Fallback heuristic: offline + no recent monitor data (legacy before multi-monitor)
   if (relay.liveLastSeen) {
-    const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
-    if (Date.now() - relay.liveLastSeen < thirtyDaysMs) return false;
+    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+    if (Date.now() - relay.liveLastSeen < sevenDaysMs) return false;
   }
 
-  // If it has no NIP-66 data and isOnline is false, it's dead
   return true;
 }
 
@@ -132,6 +134,7 @@ function TombstoneCard({ relay }: { relay: LiveRelayRecord }) {
 
 export function GraveyardPage() {
   const { relays } = useLiveRelayStore();
+  const { consensusMap } = useMonitorConsensus();
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<SortKey>('recent');
 
@@ -141,7 +144,7 @@ export function GraveyardPage() {
   });
 
   const deadRelays = useMemo(() => {
-    let dead = relays.filter(isRelayDead);
+    let dead = relays.filter(r => isRelayDead(r, consensusMap.get(r.url)?.liveness));
 
     // Search filter
     if (search) {

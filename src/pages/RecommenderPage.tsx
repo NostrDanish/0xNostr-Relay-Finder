@@ -1,8 +1,11 @@
 /**
- * RecommenderPage — "Best Relay for Me" Quiz
+ * RecommenderPage — "Best Relay for Me" Quiz (v2)
  *
- * A short interactive quiz that surfaces the best relay for the user's needs.
- * 3-4 questions → personalized recommendations from the directory.
+ * Now powered by:
+ * - Multi-monitor consensus (online quorum, median RTT)
+ * - NIP-66 real uptime (historic 30166 observations)
+ * - Speed groups (Lightning Fast / Swift / Mid / Leisurely / Glacial)
+ * - Peer percentile rankings
  */
 
 import { useState, useMemo } from 'react';
@@ -12,12 +15,21 @@ import {
   Sparkles, MessageCircle, Image, Lock, Zap, Globe2,
   ArrowRight, ArrowLeft, CheckCircle2, Radio, Crown,
   Wifi, TrendingUp, RefreshCw, DollarSign, Shield,
+  Award, Gauge,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { useLiveRelayStore, type LiveRelayRecord } from '@/hooks/useLiveRelayStore';
+import { useMonitorConsensus } from '@/hooks/useMonitorConsensus';
+import {
+  useNetworkBenchmarks,
+  getSpeedGroup,
+  SPEED_GROUP_META,
+  type NetworkBenchmarks,
+  type SpeedGroup,
+} from '@/hooks/useMonitorConsensus';
 import { AddToRelayListButton } from '@/components/relay/AddToRelayListButton';
 import { SparklineChart } from '@/components/relay/SparklineChart';
 import { relayUrlToId, shortenUrl } from '@/lib/utils';
@@ -83,7 +95,14 @@ function QuizOption<T extends string>({
   );
 }
 
-function RecommendationCard({ relay, reason, rank }: { relay: LiveRelayRecord; reason: string; rank: number }) {
+function RecommendationCard({ relay, reason, rank, speedGroup, rttMs, consensusOnline }: {
+  relay: LiveRelayRecord;
+  reason: string;
+  rank: number;
+  speedGroup: SpeedGroup | null;
+  rttMs: number | null;
+  consensusOnline: boolean;
+}) {
   return (
     <Card className="border-border/60 overflow-hidden">
       <div className="h-0.5 w-full bg-gradient-to-r from-primary/60 via-violet-500/40 to-transparent" />
@@ -104,6 +123,16 @@ function RecommendationCard({ relay, reason, rank }: { relay: LiveRelayRecord; r
                 <Badge variant="outline" className="text-xs border-emerald-500/30 text-emerald-500">Free</Badge>
               ) : (
                 <Badge variant="outline" className="text-xs border-yellow-500/30 text-yellow-500">Paid</Badge>
+              )}
+              {speedGroup && (
+                <Badge variant="outline" className="text-xs gap-1">
+                  {SPEED_GROUP_META[speedGroup].emoji} {SPEED_GROUP_META[speedGroup].label}
+                </Badge>
+              )}
+              {consensusOnline && (
+                <Badge variant="outline" className="text-xs border-emerald-500/30 text-emerald-500 gap-1">
+                  <CheckCircle2 className="w-2.5 h-2.5" /> Verified
+                </Badge>
               )}
             </div>
             <code className="text-xs text-muted-foreground font-mono block mb-2">{shortenUrl(relay.url)}</code>
@@ -163,6 +192,9 @@ export function RecommenderPage() {
     description: 'Take a quick quiz to find the perfect Nostr relay for your needs. Personalized recommendations based on your use case, budget, and privacy requirements.',
   });
 
+  const { consensusMap } = useMonitorConsensus();
+  const benchmarks = useNetworkBenchmarks(relays);
+
   const recommendations = useMemo(() => {
     if (step < 3) return [];
 
@@ -173,55 +205,62 @@ export function RecommenderPage() {
     if (answers.pricing === 'paid') candidates = candidates.filter(r => !r.isFree);
 
     // Filter by privacy
-    if (answers.privacy === 'auth') {
-      candidates = candidates.filter(r =>
-        r.nip11?.limitation?.auth_required || r.useCases.includes('Privacy')
-      );
-    }
-    if (answers.privacy === 'max') {
+    if (answers.privacy === 'auth' || answers.privacy === 'max') {
       candidates = candidates.filter(r =>
         r.nip11?.limitation?.auth_required || r.useCases.includes('Privacy')
       );
     }
 
-    // Score based on use case relevance
+    // Score based on use case relevance + consensus data
     const scored = candidates.map(relay => {
-      let score = relay.uptimePercent30d;
-      const reasons: string[] = [];
       const nips = relay.nip11?.supported_nips ?? [];
+      const reasons: string[] = [];
+      let score = relay.uptimePercent30d;
 
+      const cons = consensusMap.get(relay.url);
+      const rttMs = relay.liveLatencyMs ?? relay.avgLatencyMs;
+
+      // 1. Consensus bonus
+      if (cons?.online) { score += 15; reasons.push('Verified by monitors'); }
+      if (cons?.medianRttOpen && cons.medianRttOpen < 100) { score += 5; }
+
+      // 2. Use case relevance
       if (answers.useCase === 'general') {
-        if (relay.useCases.includes('General')) { score += 20; reasons.push('General purpose relay'); }
+        if (relay.useCases.includes('General')) { score += 15; reasons.push('General purpose'); }
         if (relay.uptimePercent30d >= 99) { score += 10; reasons.push(`${relay.uptimePercent30d.toFixed(1)}% uptime`); }
       }
       if (answers.useCase === 'dms') {
-        if (nips.includes(17)) { score += 30; reasons.push('NIP-17 private DM support'); }
+        if (nips.includes(17)) { score += 25; reasons.push('NIP-17 private DM support'); }
         if (nips.includes(4)) { score += 10; reasons.push('NIP-04 encrypted DMs'); }
-        if (relay.useCases.includes('DMs')) { score += 20; reasons.push('Optimized for DMs'); }
+        if (relay.useCases.includes('DMs')) { score += 15; reasons.push('DM-optimized'); }
       }
       if (answers.useCase === 'longform') {
-        if (nips.includes(23)) { score += 30; reasons.push('NIP-23 long-form support'); }
-        if (relay.useCases.includes('Long Form')) { score += 20; reasons.push('Long-form content relay'); }
+        if (nips.includes(23)) { score += 25; reasons.push('NIP-23 long-form'); }
+        if (relay.useCases.includes('Long Form')) { score += 15; reasons.push('Long-form relay'); }
       }
       if (answers.useCase === 'media') {
-        if (relay.blossomSupported) { score += 30; reasons.push('Blossom media server support'); }
-        if (nips.includes(94) || nips.includes(96)) { score += 20; reasons.push('NIP-94/96 file storage'); }
-        if (relay.useCases.includes('Blossom') || relay.useCases.includes('Images')) { score += 15; reasons.push('Media-optimized'); }
+        if (relay.blossomSupported) { score += 25; reasons.push('Blossom media'); }
+        if (nips.includes(94) || nips.includes(96)) { score += 15; reasons.push('NIP-94/96 file storage'); }
+        if (relay.useCases.includes('Blossom') || relay.useCases.includes('Images')) { score += 10; reasons.push('Media relay'); }
       }
       if (answers.useCase === 'communities') {
-        if (nips.includes(29)) { score += 30; reasons.push('NIP-29 relay groups'); }
-        if (nips.includes(72)) { score += 20; reasons.push('NIP-72 moderated communities'); }
-        if (relay.useCases.includes('Communities')) { score += 15; reasons.push('Community relay'); }
+        if (nips.includes(29)) { score += 25; reasons.push('NIP-29 groups'); }
+        if (nips.includes(72)) { score += 15; reasons.push('NIP-72 communities'); }
+        if (relay.useCases.includes('Communities')) { score += 10; }
       }
 
-      // Bonus for latency
-      const lat = relay.liveLatencyMs ?? relay.avgLatencyMs;
-      if (lat != null && lat < 100) { score += 5; reasons.push('Low latency'); }
+      // 3. Speed bonus
+      const sg = getSpeedGroup(rttMs, benchmarks);
+      if (sg && ['lightning', 'swift'].includes(sg)) { score += 8; reasons.push('Fast relay'); }
+      else if (sg === 'mid') { score += 3; }
+      else if (sg === 'glacial' || sg === 'leisurely') { score -= 5; }
 
-      // Bonus for NIP-66 data
-      if (relay.nip66?.enriched) { score += 3; }
+      // 4. NIP breadth
+      if (nips.length >= 20) { score += 5; reasons.push(`${nips.length} NIPs`); }
 
-      const reason = reasons.length > 0 ? reasons.join(' / ') : 'Solid general-purpose relay';
+      const reason = reasons.length > 0 ? reasons.join(' · ') : 'Solid relay';
+
+      return { relay, score, reason, speedGroup: sg, rttMs, consensusOnline: cons?.online ?? false };
 
       return { relay, score, reason };
     });
@@ -363,6 +402,9 @@ export function RecommenderPage() {
                   relay={rec.relay}
                   reason={rec.reason}
                   rank={i + 1}
+                  speedGroup={rec.speedGroup}
+                  rttMs={rec.rttMs}
+                  consensusOnline={rec.consensusOnline}
                 />
               ))}
             </div>
