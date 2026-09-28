@@ -245,7 +245,7 @@ export function useRelayDirectory() {
         for (const ev of latestByDTag.values()) {
           const dTag = ev.tags.find(([t]) => t === 'd')?.[1];
           if (!dTag) continue;
-          const overrideStatus = approvalStatusFor(approvalStatusMap, { eventId: ev.id, address: dTag, pubkey: ev.pubkey });
+          const overrideStatus = approvalStatusFor(approvalStatusMap, { eventId: ev.id, address: dTag });
           if (overrideStatus === 'approved') seenUrls.add(dTag);
         }
 
